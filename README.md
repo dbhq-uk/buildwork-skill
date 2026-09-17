@@ -40,7 +40,7 @@ buildwork's job is the layer above isolation:
 **Claude Code**
 
 ```bash
-git clone https://github.com/dbhq-uk/buildwork.git
+git clone https://github.com/dbhq-uk/buildwork-skill.git
 cd buildwork && ./install.sh
 ```
 
@@ -102,7 +102,7 @@ Resume works on both because it is reconstructed from git branches, open pull re
 
 ## The pair
 
-`buildwork` runs the work. [`deskwork`](https://github.com/dbhq-uk/deskwork) decides what the work is and what order it goes in - it files issues, reasons about precedence, writes dependency edges back to GitHub, and renders `roadmap.md`.
+`buildwork` runs the work. [`deskwork`](https://github.com/dbhq-uk/deskwork-skill) decides what the work is and what order it goes in - it files issues, reasons about precedence, writes dependency edges back to GitHub, and renders `roadmap.md`.
 
 Neither needs the other. buildwork reads issues and a roadmap file whoever wrote them, and falls back to open issues in no particular order while saying so.
 

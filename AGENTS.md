@@ -10,7 +10,7 @@ checks them and proposes a merge order. It follows the
 [Agent Skills](https://agentskills.io) layout (`skills/<name>/SKILL.md`) and
 ships as a [Claude Code plugin](https://code.claude.com/docs/en/plugins).
 
-It is the execution half of a pair. [`deskwork`](https://github.com/dbhq-uk/deskwork)
+It is the execution half of a pair. [`deskwork`](https://github.com/dbhq-uk/deskwork-skill)
 decides what the work is and what order it goes in; buildwork runs it.
 
 ## Layout

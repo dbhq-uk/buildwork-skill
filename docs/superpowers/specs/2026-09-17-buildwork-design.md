@@ -1,8 +1,8 @@
 # buildwork - design
 
 **Date:** 2026-09-17
-**Status:** design agreed, build starting
-**Repo:** `dbhq-uk/buildwork` (public, to be created), to be checked out at `~/dbhq-uk/buildwork`
+**Status:** built and public, 17 Sep 2026
+**Repo:** `dbhq-uk/buildwork-skill` (public, live 17 Sep 2026), checked out at `~/dbhq-uk/buildwork-skill`
 **Licence:** MIT
 
 ## What it is
@@ -42,7 +42,7 @@ Each is a maintenance obligation, a safety problem, or somebody else's job.
 | Session state | Only the goal and the wave, in `~/.dbhq/buildwork/` | The session goal is the one thing the runner and GitHub cannot reconstruct. `CLAUDE.md` puts skill state in `~/.dbhq/<skill>/`, never in the working tree |
 | Configuration | A committed `.github/buildwork.toml`, requiring `enabled = true` | Same gate, same file location and same reasoning as `deskwork`. Two skills, one convention |
 | Language | Python standard library, shelling out to `gh` and `git` | Matches `gitview` and `deskwork`. No packages, no venv |
-| Repository | Public, `dbhq-uk/buildwork` | The coordination rules are the interesting part and are worth nothing unless others can adopt them. All the prior art is public |
+| Repository | Public, `dbhq-uk/buildwork-skill` | The coordination rules are the interesting part and are worth nothing unless others can adopt them. All the prior art is public |
 
 ## The shape
 

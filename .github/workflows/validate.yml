@@ -1,0 +1,77 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+
+# The default for every job below. A job that needs more declares it itself;
+# an explicit floor here means a new job cannot silently inherit an org
+# setting somebody widened.
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Installers are valid bash
+        run: bash -n install.sh install-codex.sh
+
+      - name: Plugin manifest is valid JSON
+        run: jq empty .claude-plugin/plugin.json
+
+      - name: SKILL.md has name and description frontmatter
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, sys
+          ok = True
+          for skill in sorted(pathlib.Path("skills").glob("*/SKILL.md")):
+              text = skill.read_text(encoding="utf-8")
+              match = re.match(r"^---\n(.*?)\n---", text, re.S)
+              if not match:
+                  print(f"{skill}: no frontmatter")
+                  ok = False
+                  continue
+              for key in ("name:", "description:"):
+                  if key not in match.group(1):
+                      print(f"{skill}: missing {key}")
+                      ok = False
+          sys.exit(0 if ok else 1)
+          PY
+
+      - name: No absolute skill paths, which break plugin and Codex installs
+        run: |
+          if grep -rIn '~/.claude/skills/buildwork\|/home/' --include='SKILL.md' skills/ ; then
+            echo "SKILL.md must reach its scripts through \${CLAUDE_SKILL_DIR}."
+            exit 1
+          fi
+
+      - name: No merge verb reached the scripts
+        run: |
+          if grep -rInE 'gh pr merge|git merge |git push .*(main|master)|--admin' skills/buildwork/scripts/ ; then
+            echo "buildwork never merges. See constraint 1 in AGENTS.md."
+            exit 1
+          fi
+
+      - name: No em dashes, which the house style forbids
+        run: |
+          if grep -rIn $'—' --include='*.md' --include='*.py' . ; then
+            echo "Em dash found. Use a comma, a full stop, a semicolon or brackets."
+            exit 1
+          fi
+
+      - name: Nothing client-specific reached this public repository
+        run: |
+          if grep -rInE '[0-9]{1,3}(\.[0-9]{1,3}){3}|[A-Z]{3,}-[0-9]{3,}|dev\.azure\.com/[A-Za-z]' \
+               --include='*.md' --include='*.py' --include='*.yml' \
+               --exclude-dir=.github . ; then
+            echo "That looks like an IP address, a ticket id, or a real organisation. Check it."
+            exit 1
+          fi
+
+      - name: Tests
+        run: |
+          python3 -m pip install --quiet pytest
+          python3 -m pytest skills/buildwork/tests -q

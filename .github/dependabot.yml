@@ -1,0 +1,19 @@
+version: 2
+updates:
+  # GitHub Actions only. There is deliberately no pip ecosystem here: buildwork
+  # is Python standard library and shells out to git and gh, so there is no
+  # requirements.txt. Nothing to keep up to date is the point, not an omission.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns:
+          - "*"

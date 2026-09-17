@@ -12,7 +12,7 @@ parser, and a hand-rolled parser that mostly works is worse than either.
 from __future__ import annotations
 
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 CONFIG_PATH = ".github/buildwork.toml"

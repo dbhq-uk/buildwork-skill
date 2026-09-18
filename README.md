@@ -162,6 +162,7 @@ itself is [dbhq-uk/marketplace](https://github.com/dbhq-uk/marketplace) - one
 | [pennyblack](https://skills.dbhq.uk/pennyblack/) | A physical letter, posted from the terminal |
 | [deskwork](https://skills.dbhq.uk/deskwork/) | What an agent noticed, tracked as real work |
 | [groupwork](https://skills.dbhq.uk/groupwork/) | A second agent on the work, adversary or partner |
+| [headwork](https://skills.dbhq.uk/headwork/) | One decision at a time, with a recommendation |
 
 Plus [heliograph](https://skills.dbhq.uk/heliograph/), for a machine you cannot log into.
 

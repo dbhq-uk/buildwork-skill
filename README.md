@@ -38,7 +38,7 @@ Wave 2 (alone):
 ~ No dependency links were readable, so these issues are treated as independent.
 ```
 
-## The part that matters
+## What makes it different
 
 Several tools already run coding agents in parallel over git worktrees. They isolate the agents and then leave task alignment, conflict resolution and merge decisions to you. They are session managers.
 
@@ -83,6 +83,14 @@ same install two ways: Claude Code substitutes `${CLAUDE_SKILL_DIR}`, so the
 whole skill directory is symlinked untouched, while Codex does not, so its
 `SKILL.md` is rewritten at install time. Re-run the Codex one after editing
 `SKILL.md`.
+
+## Requirements
+
+Python 3, standard library only. `git`, and `gh` authenticated - the whole
+skill is pull requests, so an unauthenticated `gh` fails at the first one.
+
+Plus a runner: Paseo, or a host whose subagent tool can create a git
+worktree. Neither is installed by this skill.
 
 ## Opt in, per repository
 

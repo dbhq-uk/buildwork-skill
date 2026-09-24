@@ -1,7 +1,6 @@
 {
   "name": "buildwork",
   "description": "Run a repository's open issues as parallel agents, one per issue, each in its own git worktree and its own pull request, then check the results and propose a merge order. Refuses to fan out when one agent would do, serialises issues that claim the same file, and never merges.",
-  "version": "1.0.0",
   "author": {
     "name": "DBHQ",
     "email": "dan@dbhq.uk"

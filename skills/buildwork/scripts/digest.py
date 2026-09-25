@@ -115,7 +115,11 @@ to. Anything you need that is not here, read from the repository.
 {where}
 - Commit your work, push it with `git push -u origin {branch}`, and open a pull
   request against `{base}` whose body contains `Closes #{issue['number']}`.
-- Do not merge. Do not rebase onto anything. Do not touch `{base}`.
+- Do not merge, and do not touch `{base}`.
+- Do not rebase, unless the orchestrator sends it back as your one rework
+  because the branch conflicts. Then fetch, rebase this branch and only this
+  branch onto `{cut_from}`, resolve the conflicts, run the checks again, and
+  push it with `git push --force-with-lease`.
 - Do not open issues, and do not start work the issue did not ask for. Note it in
   the pull request body instead.
 

@@ -385,6 +385,94 @@ def test_order_with_nothing_to_order_stops(repo, github, bw):
     assert "Nothing to order" in result.err
 
 
+def _undeclared(github, *numbers):
+    """Issues that name no files, as most do. Nothing in the plan can see what they will touch."""
+    for n in numbers:
+        github.issue(n, f"issue {n}", body="Fix the thing.")
+
+
+def test_order_finds_a_conflict_on_a_file_no_issue_declared(repo, github, bw):
+    repo.on_main("seed", {"src/shared.py": "one\ntwo\nthree\n"})
+    _undeclared(github, 1, 2)
+    repo.branch("buildwork/issue-1-issue-1", {"src/shared.py": "ONE\ntwo\nthree\n"})
+    repo.branch("buildwork/issue-2-issue-2", {"src/shared.py": "uno\ntwo\nthree\n"})
+    github.pull(11, "buildwork/issue-1-issue-1")
+    github.pull(12, "buildwork/issue-2-issue-2")
+    out = bw("order").out
+    assert "PR #11 and PR #12 conflict with each other in src/shared.py." in out
+    assert "rebases it onto origin/main" in out
+
+
+def test_order_finds_a_conflict_with_work_merged_since_the_branch_was_cut(repo, github, bw):
+    repo.on_main("seed", {"src/shared.py": "one\ntwo\n"})
+    _undeclared(github, 1, 2)
+    repo.branch("buildwork/issue-1-issue-1", {"src/shared.py": "ONE\ntwo\n"})
+    repo.branch("buildwork/issue-2-issue-2", {"src/other.py": "x\n"})
+    repo.branch("elsewhere", {"src/shared.py": "uno\ntwo\n"})
+    repo.merge_on_github("elsewhere")
+    github.pull(11, "buildwork/issue-1-issue-1")
+    github.pull(12, "buildwork/issue-2-issue-2")
+    out = bw("order").out
+    assert "PR #11 conflicts with origin/main in src/shared.py." in out
+    assert "PR #12" in out and "PR #12 conflicts" not in out
+
+
+# Found by searching random edits: every pair of these merges cleanly, and
+# each merges cleanly into main, but the third conflicts once the first two
+# are in. Checking pairs alone cannot see it.
+SEQUENCE_BASE = "b\nb\na\nb\na\na\n"
+SEQUENCE_BRANCHES = {
+    1: "b\nb\nc\na\nb\na\na\n",   # one line added: the smallest diff, so first
+    2: "X\nb\na\nb\na\na\n",       # the first line changed
+    3: "X\nb\na\nb\na\nc\n",       # the same first line, and the last one
+}
+
+
+def test_order_finds_a_conflict_that_only_the_proposed_order_shows(repo, github, bw):
+    repo.on_main("seed", {"notes.txt": SEQUENCE_BASE})
+    _undeclared(github, 1, 2, 3)
+    for n, text in SEQUENCE_BRANCHES.items():
+        repo.branch(f"buildwork/issue-{n}-issue-{n}", {"notes.txt": text})
+        github.pull(10 + n, f"buildwork/issue-{n}-issue-{n}")
+    out = bw("order").out
+    assert out.index("PR #11") < out.index("PR #12") < out.index("PR #13")
+    assert "conflict with each other" not in out
+    assert "conflicts with origin/main" not in out
+    assert "In this order, PR #13 conflicts once PR #11, PR #12 have merged, in notes.txt." in out
+
+
+def test_order_says_when_nothing_conflicts(repo, github, bw):
+    issues(github, 1, 2)
+    repo.branch("buildwork/issue-1-issue-1", {"src/f1.py": "x\n"})
+    repo.branch("buildwork/issue-2-issue-2", {"src/f2.py": "x\n"})
+    github.pull(11, "buildwork/issue-1-issue-1")
+    github.pull(12, "buildwork/issue-2-issue-2")
+    assert "No conflicts: each branch merges cleanly into origin/main" in bw("order").out
+
+
+def test_the_conflict_check_moves_no_ref_and_touches_no_file(repo, github, bw):
+    repo.on_main("seed", {"src/shared.py": "one\n"})
+    _undeclared(github, 1, 2)
+    repo.branch("buildwork/issue-1-issue-1", {"src/shared.py": "ONE\n"})
+    repo.branch("buildwork/issue-2-issue-2", {"src/shared.py": "uno\n"})
+    github.pull(11, "buildwork/issue-1-issue-1")
+    github.pull(12, "buildwork/issue-2-issue-2")
+    refs = repo.git("for-each-ref", "--format=%(refname) %(objectname)")
+    remote = repo.git("for-each-ref", "--format=%(refname) %(objectname)", cwd=repo.remote)
+    assert "conflict with each other" in bw("order").out
+    assert repo.git("for-each-ref", "--format=%(refname) %(objectname)") == refs
+    assert repo.git("for-each-ref", "--format=%(refname) %(objectname)", cwd=repo.remote) == remote
+    assert repo.git("status", "--porcelain") == ""
+
+
+def test_the_brief_lets_a_worker_rebase_its_own_branch_only_as_its_rework(repo, github, bw):
+    issues(github, 1)
+    out = " ".join(bw("brief", "1", "--runner", "paseo").out.split())
+    assert "Do not rebase, unless the orchestrator sends it back as your one rework" in out
+    assert "rebase this branch and only this branch onto `origin/main`" in out
+    assert "--force-with-lease" in out
+
+
 def test_order_changes_nothing(repo, github, bw):
     """No merge verb: after `order`, neither main nor the remote has moved."""
     issues(github, 1, 2)

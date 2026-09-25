@@ -47,7 +47,7 @@ Worktrees solve exactly one problem: two agents writing the same file at the sam
 buildwork's job is the layer above isolation:
 
 - **It refuses.** One issue, or several issues that are really one piece of work, gets a `DO NOT FAN OUT` and a reason. A single agent matches or beats a multi-agent system on most tasks, at roughly a fifteenth of the tokens. The commonest mistake this tool can prevent is using it.
-- **It serialises collisions.** Two issues that claim the same file never share a wave.
+- **It serialises collisions.** Two issues that claim the same file never share a wave. Before you merge, it finds the collisions nobody declared, from the real diffs.
 - **It checks before it hands anything over.** Scope, hotspots and your own test suite, then an honest statement that mechanical checks are a floor and not a verdict.
 - **It never merges.** It proposes an order and gives its reasons. There is no merge verb in the codebase.
 
@@ -86,8 +86,9 @@ whole skill directory is symlinked untouched, while Codex does not, so its
 
 ## Requirements
 
-Python 3, standard library only. `git`, and `gh` authenticated - the whole
-skill is pull requests and issues. When `gh` fails, every command stops with
+Python 3.11 or later, standard library only. `git` 2.38 or later, for the
+trial merges in `order`, and `gh` authenticated - the whole skill is pull
+requests and issues. When `gh` fails, every command stops with
 gh's own error rather than reading the failure as an empty repository, and
 `doctor` checks the login and which repository `gh` resolves this clone to.
 
@@ -113,7 +114,7 @@ Full field reference: [`references/config.md`](skills/buildwork/references/confi
 3. **It dispatches** wave one - a Paseo tab or a host subagent per issue, each with a self-contained brief and a shared digest of your conventions read once rather than five times.
 4. **It goes idle.** No polling. The finish notification arrives on its own.
 5. **It collects** - scope, hotspots, your test suite - and offers exactly one rework per failure before handing it to you.
-6. **It proposes a merge order**, with a line of reasoning per position. You merge.
+6. **It proposes a merge order**, with a line of reasoning per position, and checks it with trial merges that merge nothing: each branch against the base, each pair, and the order played through. A conflict goes back to the worker that owns the branch, to rebase it. You merge.
 
 ## Runners
 

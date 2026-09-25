@@ -125,7 +125,7 @@ def load(root: Path) -> Config:
 
 
 STARTER = """\
-# buildwork - https://github.com/dbhq-uk/buildwork
+# buildwork - https://github.com/dbhq-uk/buildwork-skill
 #
 # Nothing happens until enabled = true. That is the gate, not a formality:
 # this file arms a tool that dispatches agents at your repository.

@@ -10,8 +10,8 @@ base = "main"
 gate = "python3 -m pytest -q"
 
 hotspots = [
-  "website/public/_headers",
-  "docs/website/content-plan.md",
+  "package-lock.json",
+  "src/routes.ts",
 ]
 
 digest = ["CLAUDE.md", "AGENTS.md"]

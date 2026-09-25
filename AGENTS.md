@@ -46,18 +46,21 @@ and collects is the whole design; one that also edits is the monolith one level
 up, and it arrives one helpful commit at a time.
 
 **3. The refusal is a feature, not a fallback.** `waves.plan()` returning a
-refusal is a correct, valuable result. A single agent matches or beats a
-multi-agent system on most tasks at a fifteenth of the tokens, so the commonest
-mistake this tool can prevent is using it. Never weaken a refusal into a
-warning, and never add a `--force` that skips them.
+refusal is a correct, valuable result. Every worker is a full context of its
+own, so fan-out spends tokens to buy wall-clock time, and one issue, or one
+piece of work under several numbers, has nothing to buy. The commonest mistake
+this tool can prevent is using it. `references/waves.md` has the evidence and
+what it measured. Never weaken a refusal into a warning, and never add a
+`--force` that skips them.
 
 **4. No config, or no `enabled = true`, means no action.** Not a warning, not a
 prompt, not a default. `config.load()` raises and the caller stops. `init`
 always writes `enabled = false`.
 
 **5. QC's ceiling is stated, never implied away.** Mechanical checks catch
-scope violations, hotspot violations and a failing gate. A semantically wrong
-change with no covering test passes all three. `Report.summary()` says "a
+scope violations, hotspot violations, a failing gate and a credential of a
+known shape. A semantically wrong change with no covering test passes all
+four. `Report.summary()` says "a
 floor, not a verdict" on every pass and that wording earns its place - a tool
 that reports a green tick without it will be read as having approved the
 change.

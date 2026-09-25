@@ -189,7 +189,7 @@ Reconstructs the whole picture from git, GitHub and the runner, and says what is
 
 ## Non-negotiable constraints
 
-These belong in `AGENTS.md` in the new repository, in the same voice as `devskills`.
+These belong in `AGENTS.md` in the new repository, in the same voice as the other DBHQ skill repositories.
 
 **1. It never merges.** No merge, no pull request completion, no rebase of somebody else's branch, no push to `base`. The skill has no merge verb at all, which is what makes the constraint hold itself rather than depend on restraint. In `dbhq` a merge to `main` is the deploy; this rule is why an agent cannot ship the site.
 
@@ -283,7 +283,7 @@ Then, because it is a skill: the `marketplace` repo and `skills-site`. Standard 
 
 ## Open items
 
-- **`deskwork` is designed but not built.** `buildwork` does not depend on it - it reads issues and a roadmap file whoever wrote them - but the dependency graph it reads is `deskwork`'s output. Until that ships, `buildwork` treats issues as independent unless GitHub already carries blocked-by links.
+- **`deskwork` shipped on 17 Sep 2026**, as [`dbhq-uk/deskwork-skill`](https://github.com/dbhq-uk/deskwork-skill). `buildwork` does not depend on it - it reads issues and a roadmap file whoever wrote them - but the dependency graph it reads is `deskwork`'s output. Where nothing has written blocked-by links, `buildwork` treats issues as independent and says so.
 - **`roadmap.md` does not exist in `dbhq` yet**, and there are three issues in the repository. The first real wave has nothing to run until `deskwork` fills the backlog, so `buildwork` will be exercised against fixtures before it is exercised against this repo.
 - **The `subagent` runner's worktree isolation is host-specific.** Claude Code's Agent tool takes `isolation: "worktree"`; other hosts differ. `references/runners.md` records what each host provides and the skill says so rather than assuming.
 

@@ -165,8 +165,13 @@ def cmd_plan(args: argparse.Namespace) -> int:
     plan.warnings.extend(source_warnings)
     plan.assumptions[:0] = source_assumptions
 
-    if board.note:
-        plan.assumptions.append(board.note)
+    # With --issues the selection and its order are the caller's, whatever
+    # the roadmap or its absence would have said.
+    source, note = board.source, board.note
+    if args.issues:
+        source, note = "--issues", "The issues were chosen with --issues, and run in the order given."
+    if note:
+        plan.assumptions.append(note)
     if missing:
         plan.warnings.append(
             "In the roadmap but not open on GitHub: "
@@ -179,7 +184,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         "cap": cap,
         "base": cfg.base,
         "base_ref": cut_from,
-        "source": board.source,
+        "source": source,
         "refusal": plan.refusal,
         "waves": [
             [
@@ -435,7 +440,9 @@ def cmd_qc(args: argparse.Namespace) -> int:
     if branch not in gh.branches(root):
         fail(f"No branch {branch}. Nothing to check.")
 
-    changed = gh.changed_files(root, gh.base_ref(root, cfg.base), branch)
+    base = gh.base_ref(root, cfg.base)
+    changed = gh.changed_files(root, base, branch)
+    added = gh.added_lines(root, base, branch)
     declared = waves_mod.declared_files(issue.get("body") or "", root)
 
     worktree = None
@@ -461,7 +468,7 @@ def cmd_qc(args: argparse.Namespace) -> int:
     report = qc_mod.check(
         issue=args.issue, branch=branch, changed=changed, declared=declared,
         hotspots=cfg.hotspots, allowed_hotspots=allowed,
-        gate_command=cfg.gate, worktree=worktree,
+        gate_command=cfg.gate, worktree=worktree, added=added,
     )
 
     for check in report.checks:
@@ -545,6 +552,7 @@ def cmd_order(args: argparse.Namespace) -> int:
             issue=number, branch=branch, changed=changed, declared=declared,
             hotspots=cfg.hotspots,
             allowed_hotspots=sess.allowed_hotspots(number) if sess else (),
+            added=gh.added_lines(root, base, branch),
         )
         items.append(order_mod.Ready(
             issue=number, branch=branch,
@@ -746,9 +754,12 @@ def _suggest_hotspots(root: Path, commits: int = 200, top: int = 6) -> list[str]
     )
     # Directories and generated files are noise. A hotspot worth naming is a
     # single file several unrelated changes keep landing in.
+    # A file deleted since is still in the log. Suggesting it writes a stale
+    # hotspot into the starter, which doctor then reports on the first run.
     return [
         name for name, count in counts.most_common(top * 3)
         if count >= 3 and not name.endswith((".lock", ".png", ".svg", ".jpg"))
+        and (root / name).is_file()
     ][:top]
 
 

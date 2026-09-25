@@ -5,15 +5,23 @@
 The default failure of every tool in this category is fanning out work that one
 agent should simply have done.
 
-A single agent matches or beats a multi-agent system on most benchmarked tasks
-given the same tools and the same context. A multi-agent run burns roughly
-fifteen times the tokens of a single conversation. Teams have spent months
-building elaborate orchestration and found that better prompting of one agent
-got them the same result.
+The figure usually quoted is Anthropic's: their multi-agent research system
+used about fifteen times the tokens of a chat
+([How we built our multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system),
+June 2025). Read it for what it measured: one research question split across
+subagents, against a chat. The same write-up says that work where agents need
+the same context, or depend on each other, is a poor fit, and that "most coding
+tasks involve fewer truly parallelizable tasks than research".
 
-Fan-out earns its cost in exactly one situation: **several pieces of work that
-genuinely do not touch each other**, where the wall-clock saving is worth the
-token multiple and the integration cost.
+buildwork's case is not that one. It runs several whole issues, each in its own
+context, so nothing is split and the cost is not a multiple of one task. It is
+one full context per worker, the reading each worker would repeat (which the
+shared digest cuts), the orchestrator, and integrating the branches. All of
+that buys wall-clock time and nothing else.
+
+So fan-out earns its cost in exactly one situation: **several pieces of work
+that genuinely do not touch each other**, where the wall-clock saving is worth
+the extra contexts and the integration cost.
 
 That is why `plan` can return a refusal, and why the refusal is a result rather
 than an error. When it fires, say it plainly and do the work in the session you
@@ -140,5 +148,7 @@ one's.
   comfortable, and where Paseo tabs stop being readable.
 - **2** is the cap on host subagents, which die with your session and send every
   permission prompt to it.
-- **15x** the tokens of a single conversation, roughly, for a multi-agent run.
+- **15x** the tokens of a chat, for one research task split across subagents
+  (Anthropic's measure). Several independent issues cost one full context each
+  instead, plus the orchestrator and the integration.
 - **1** rework per failed collection. Then a human.

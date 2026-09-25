@@ -1,6 +1,6 @@
 ---
 name: buildwork
-description: Run a repository's open issues as parallel agents, one per issue, each in its own worktree and its own pull request, then check them and propose a merge order. Works through Paseo tabs or the host's own subagents. Trigger on phrases like "buildwork", "run the roadmap", "work through the backlog", "fan these out", "run these issues in parallel", "spin up agents for these", "what are my agents doing", "what's running", "which order do I merge these", "collect the wave".
+description: Run a repository's open issues as parallel agents, one per issue, each in its own worktree and its own pull request, then check them and propose a merge order. Works through Paseo tabs or the host's own subagents. Trigger on phrases like "buildwork", "run the roadmap", "work through the backlog", "fan these out", "run these issues in parallel", "spin up agents for these", "what are my agents doing", "what are my agents running", "which order do I merge these", "collect the wave".
 ---
 
 # buildwork - parallel issues, one orchestrator, no merging
@@ -80,7 +80,7 @@ Paseo notifies you of three things: a worker **finished**, **errored**, or **nee
 python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" qc 143
 ```
 
-It reads which hotspot this issue was sent to change from the session `plan --save` recorded, so no `--allow-hotspot` is needed here. A subagent worker that stopped before renaming its branch is on the `worktreeBranch` the tool returned; pass it as `qc 143 --branch <worktreeBranch>`. Exit 0 is a pass, 2 is a failure. Then **read the pull request against the issue's acceptance criteria yourself.** The gates are mechanical: they catch scope and hotspot violations and a failing test run. A semantically wrong change with no covering test passes all three. A QC pass is a floor, never a verdict.
+It reads which hotspot this issue was sent to change from the session `plan --save` recorded, so no `--allow-hotspot` is needed here. A subagent worker that stopped before renaming its branch is on the `worktreeBranch` the tool returned; pass it as `qc 143 --branch <worktreeBranch>`. Exit 0 is a pass, 2 is a failure. Then **read the pull request against the issue's acceptance criteria yourself.** The gates are mechanical: they catch scope and hotspot violations, a failing test run, and an added line that looks like a known credential. A semantically wrong change with no covering test passes all four. A QC pass is a floor, never a verdict.
 
 **Needs permission:** the worker is waiting, and the decision is the human's. Under paseo, read the request with `list_pending_permissions`. Deny at once, with `respond_to_permission`, anything the brief forbids a worker: a merge, a push to the base branch, a change outside its own worktree. Put anything else to the human, with the issue number and exactly what the worker asked to do, and answer as they decide. Never approve on their behalf: a worker whose prompts an agent approves is the unsupervised worker runners.md rejects. Under subagent, the human answers the prompt in your session.
 

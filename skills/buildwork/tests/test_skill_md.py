@@ -70,3 +70,15 @@ def test_doctor_runs_as_written(tmp_path):
     # message proves the script was found and ran.
     assert "can't open file" not in proc.stderr
     assert "buildwork is opt-in per repository" in proc.stderr
+
+
+def test_the_skill_name_matches_its_folder():
+    """A name that differs from its folder installs under one name and is invoked under another."""
+    front = SKILL_MD.read_text(encoding="utf-8").split("---")[1]
+    name = re.search(r"^name:\s*(.+?)\s*$", front, re.M).group(1)
+    assert name == SKILL_DIR.name
+
+
+def test_no_trigger_would_fire_on_a_question_about_system_processes():
+    description = SKILL_MD.read_text(encoding="utf-8").split("---")[1]
+    assert "\"what's running\"" not in description

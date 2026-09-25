@@ -53,7 +53,7 @@ Path to the ordered queue, relative to the repository root. Default
 Only the entries under a runnable heading (`## Next`) are planned. `## Blocked`,
 `## Later`, `## Triage`, `## Cycles` and any heading the parser does not know
 are held. An entry is a list item whose first issue reference is the issue, as
-in `1. **#12** Title`; the indented `Why:` line under it is prose. **If one
+in `1. **#12** Title`; the `Why:` line under it is prose, even when it is written as a bullet. **If one
 issue is listed under Next and under a held heading, it is held**, whichever
 comes first, and `plan` says so in a `!` warning. `## Bottlenecks` only
 describes issues listed elsewhere, so a mention there holds nothing.

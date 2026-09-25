@@ -223,6 +223,17 @@ def test_why_lines_are_not_entries():
     assert next(e for e in board.entries if e.number == 145).title == "The positioning changed"
 
 
+def test_a_why_line_written_as_a_bullet_is_still_not_an_entry():
+    """Read as an item, `Why: #144 ...` under Next would run #144, which is blocked."""
+    text = (
+        "## Next\n\n1. **#143** Ready\n   - Why: #144 cannot start until it lands.\n"
+        "   * **Why:** 2. Ahead of #147.\n\n## Blocked\n\n- **#144** Blocked - blocked by #143\n"
+    )
+    board = roadmap.parse(text)
+    assert [e.number for e in board.runnable] == [143]
+    assert [e.number for e in board.entries] == [143, 144]
+
+
 def test_the_old_triage_heading_is_still_held():
     board = roadmap.parse("## Next\n\n1. **#1** One\n\n## Triage - not yet in the roadmap\n\n- #2 Two\n")
     assert [e.number for e in board.runnable] == [1]

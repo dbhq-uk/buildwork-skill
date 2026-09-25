@@ -7,7 +7,8 @@ this parser is strict about one thing only: what counts as an entry.
 An entry is the first issue reference in a list item. Every other `#N` on the
 line is reasoning ("blocked by #143", "reasoned ahead of #147") and picking
 those up would silently double the queue. So is a `Why:` line under an entry:
-it is indented prose, never a list item.
+deskwork writes it as indented prose, and one written as a bullet is still
+never an entry.
 
 The contract with deskwork is only this: `## Next`, `## Blocked`, `## Later`
 and `## Triage` headings, and entries shaped like `1. **#12** Title`. Anything
@@ -33,6 +34,7 @@ ITEM = re.compile(r"^\s*(?:[-*]|\d+[.)])\s+(.*)$")
 # is matched so it can be skipped rather than mistaken for a local issue - the
 # number after the hash means nothing without its repo.
 REF = re.compile(r"(?P<repo>[\w.-]+/[\w.-]+)?#(?P<num>\d+)")
+WHY = re.compile(r"^[*_\s]*why\s*[*_]*:", re.IGNORECASE)
 
 RUNNABLE_SECTIONS = ("next", "now", "in progress", "ready")
 HELD_SECTIONS = ("blocked", "triage", "waiting", "later", "icebox", "done", "cycles")
@@ -101,6 +103,10 @@ def parse(text: str) -> Roadmap:
             continue
 
         rest = match.group(1)
+        if WHY.match(rest):
+            # A reason written as a bullet is still a reason. Its first `#N`
+            # is the issue it argues about, and under Next that would run it.
+            continue
         ref = REF.search(rest)
         if not ref or ref.group("repo"):
             # No reference, or the first one is cross-repo. Either way there is

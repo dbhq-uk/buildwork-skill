@@ -56,8 +56,13 @@ def brief(
     digest_text: str,
     declared: tuple[str, ...],
     allowed_hotspots: tuple[str, ...] = (),
+    cut_from: str | None = None,
 ) -> str:
-    """The whole of what a worker is told. It has no context but this."""
+    """The whole of what a worker is told. It has no context but this.
+
+    `cut_from` is the ref the worktree was made from, `origin/<base>` in use.
+    `base` is the branch the pull request targets and the worker must not touch.
+    """
     scope = (
         "\n".join(f"- `{p}`" for p in declared)
         if declared else
@@ -94,7 +99,7 @@ You are one of several agents working in parallel, each on a separate issue in
 its own worktree on its own branch. You cannot see the others and must not try
 to. Anything you need that is not here, read from the repository.
 
-- Your branch is `{branch}`, already checked out, cut from `{base}`.
+- Your branch is `{branch}`, already checked out, cut from `{cut_from or base}`.
 - Commit your work, push the branch, and open a pull request whose body contains
   `Closes #{issue['number']}`.
 - Do not merge. Do not rebase onto anything. Do not touch `{base}`.

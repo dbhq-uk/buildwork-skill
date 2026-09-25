@@ -63,6 +63,18 @@ def cmd_plan(args: argparse.Namespace) -> int:
     runner = cfg.runner if cfg.runner != "auto" else (args.runner or "subagent")
     cap = cfg.cap_for(runner)
 
+    # Every wave is cut from origin/<base> as it is now. Without the fetch, a
+    # wave planned after the last one merged on GitHub starts from a base that
+    # does not contain it.
+    cut_from = gh.remote_base(cfg.base)
+    try:
+        gh.fetch_base(root, cfg.base)
+    except gh.GhError as exc:
+        fail(
+            f"Could not fetch {cut_from}, so a wave would be cut from a base that may be "
+            f"missing merged work. Fix the fetch and plan again.\n{exc}"
+        )
+
     issues = gh.open_issues(root)
     by_number = {int(i["number"]): i for i in issues}
 
@@ -101,6 +113,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         "runner": runner,
         "cap": cap,
         "base": cfg.base,
+        "base_ref": cut_from,
         "source": board.source,
         "refusal": plan.refusal,
         "waves": [
@@ -142,7 +155,7 @@ def _render_plan(p: dict) -> str:
     lines = []
     if p["goal"]:
         lines.append(f"Goal: {p['goal']}")
-    lines.append(f"Runner: {p['runner']}, up to {p['cap']} at once, cut from {p['base']}. Order from {p['source']}.")
+    lines.append(f"Runner: {p['runner']}, up to {p['cap']} at once, cut from {p['base_ref']}. Order from {p['source']}.")
     lines.append("")
 
     if p["refusal"]:
@@ -185,7 +198,7 @@ def cmd_brief(args: argparse.Namespace) -> int:
 
     print(digest_mod.brief(
         issue=issue, base=cfg.base, branch=branch, digest_text=text,
-        declared=declared, allowed_hotspots=allowed,
+        declared=declared, allowed_hotspots=allowed, cut_from=gh.remote_base(cfg.base),
     ))
     return 0
 
@@ -203,7 +216,7 @@ def cmd_qc(args: argparse.Namespace) -> int:
     if branch not in gh.branches(root):
         fail(f"No branch {branch}. Nothing to check.")
 
-    changed = gh.changed_files(root, cfg.base, branch)
+    changed = gh.changed_files(root, gh.base_ref(root, cfg.base), branch)
     declared = waves_mod.declared_files(issue.get("body") or "", root)
 
     worktree = None
@@ -252,6 +265,7 @@ def cmd_order(args: argparse.Namespace) -> int:
     if not numbers:
         fail("No session and no buildwork branches. Nothing to order.")
 
+    base = gh.base_ref(root, cfg.base)
     items = []
     finished = 0
     for number in numbers:
@@ -272,7 +286,7 @@ def cmd_order(args: argparse.Namespace) -> int:
         # could not read about is offered for merge.
         body = gh.issue(root, number).get("body") or ""
         declared = waves_mod.declared_files(body, root)
-        changed = gh.changed_files(root, cfg.base, branch)
+        changed = gh.changed_files(root, base, branch)
         # Without the plan's permission, the one branch sent to change a
         # hotspot fails the hotspot check here and is held back, and the
         # first ordering rule, hotspot first, can never fire.
@@ -286,7 +300,7 @@ def cmd_order(args: argparse.Namespace) -> int:
             pr=pr.get("number") if pr else None,
             hotspots=waves_mod.hotspots_touched(tuple(changed), cfg.hotspots),
             blocked_by=tuple(gh.blocked_by(root, number, body)),
-            diff_size=gh.diff_size(root, cfg.base, branch),
+            diff_size=gh.diff_size(root, base, branch),
             qc_passed=report.passed,
         ))
 
@@ -416,6 +430,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     if sess and sess.stale:
         problems.append(f"Session record is {sess.age_text()} old: {sess.goal!r}. Probably finished; clear it.")
 
+    problems += _base_checks(root, cfg.base)
+
     gh_problems, gh_error = _gh_checks(root)
     problems += gh_problems
     pulls: list[dict] = []
@@ -461,6 +477,29 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     for problem in problems:
         print(f"- {problem}")
     return 0
+
+
+def _base_checks(root: Path, base: str) -> list[str]:
+    """Whether local `base` has fallen behind the remote one.
+
+    buildwork cuts and compares against origin/<base>, so this is not a fault
+    in buildwork. It is the trap for everything else: a Paseo workspace given
+    a bare `main`, a diff run by hand, a human checking a branch locally.
+    """
+    remote = gh.remote_base(base)
+    problems: list[str] = []
+    try:
+        gh.fetch_base(root, base)
+    except gh.GhError as exc:
+        problems.append(f"Could not fetch {remote}, so the check below used the last fetch. {exc}")
+    behind = gh.behind_remote(root, base)
+    if behind:
+        problems.append(
+            f"Local `{base}` is {behind} commit(s) behind `{remote}`. A worker cut from local "
+            f"`{base}`, or a diff against it, misses that work. Dispatch from `{remote}`, "
+            f"which is what `plan` names."
+        )
+    return problems
 
 
 def _gh_checks(root: Path) -> tuple[list[str], str | None]:

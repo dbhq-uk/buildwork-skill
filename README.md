@@ -22,7 +22,7 @@ An agent skill for [Claude Code](https://code.claude.com) and [Codex](https://de
 
 ```
 Goal: get the deploy pipeline unblocked
-Runner: paseo, up to 4 at once, cut from main. Order from roadmap.md.
+Runner: paseo, up to 4 at once, cut from origin/main. Order from roadmap.md.
 
 Wave 1 (2 in parallel):
   #143  The GitHub metadata register has drifted  [hotspot: .github/workflows/deploy.yml]

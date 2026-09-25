@@ -123,3 +123,25 @@ on one hotspot, a fully chained set that must degrade to sequential, a single
 issue that must refuse, a `blocked by #143` line in prose that must not be read
 as a queue entry, and a cross-repo `owner/repo#26` that must never become local
 issue 26.
+
+### The CLI harness
+
+The pure modules are tested as functions. Everything that meets git and GitHub
+is tested end to end in `test_cli.py`, through the harness in
+`tests/harness.py`:
+
+- **Real git.** A working clone of a bare remote, with real branches, linked
+  worktrees and squash merges. Nothing about git is mocked.
+- **A fake `gh`** (`tests/fake_gh.py`) first on PATH, answering from state the
+  test sets. It fails the way gh 2.100 fails: a non-zero exit with gh's own
+  stderr, a 404 body on stdout, one REST page of 30 without `--paginate`, and
+  `--state closed` including merged pull requests. A command it does not model
+  exits 1 with `fake gh: unsupported`. If a fix trips that, teach the fake what
+  GitHub really prints; do not make it answer something convenient.
+- **`buildwork.py` as a subprocess**, the way SKILL.md runs it, with a private
+  `HOME` so no session record reaches the real `~/.dbhq/buildwork/`.
+
+A test marked `@bug(N)` reproduces open issue #N. It is a strict xfail, so it
+fails today and fails the suite again the day the bug is fixed. The fix removes
+the marker in the same pull request. That is how every fix here arrives with a
+test that failed on the commit before it.

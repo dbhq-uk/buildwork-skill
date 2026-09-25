@@ -56,6 +56,11 @@ a test that would have failed before it.
 Prefer a case that produces a *plausible* wrong answer over one that produces
 an obvious error - those are the ones that reach production.
 
+A change to `gh.py`, `buildwork.py` or `session.py` needs a test in the CLI
+harness: a real git repository and a fake `gh` on PATH. `test_cli.py` shows the
+pattern, and AGENTS.md says how the harness works. A test marked `@bug(N)` is
+an open issue; if your change makes it pass, remove the marker.
+
 ## Style
 
 British English, plain hyphens, no em dashes, no trailing full stops on

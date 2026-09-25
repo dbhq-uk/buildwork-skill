@@ -57,12 +57,25 @@ def brief(
     declared: tuple[str, ...],
     allowed_hotspots: tuple[str, ...] = (),
     cut_from: str | None = None,
+    runner: str = "paseo",
 ) -> str:
     """The whole of what a worker is told. It has no context but this.
 
     `cut_from` is the ref the worktree was made from, `origin/<base>` in use.
     `base` is the branch the pull request targets and the worker must not touch.
+
+    Under the subagent runner the host makes the worktree, names its branch
+    and picks its base, so the brief opens by putting both right. Without it
+    the worker commits to a branch no later command can find, cut from a base
+    the config never named.
     """
+    cut_from = cut_from or base
+    first = _subagent_start(branch, cut_from) if runner == "subagent" else ""
+    where = (
+        f"- Your branch is `{branch}` once you have renamed it, cut from `{cut_from}`."
+        if runner == "subagent" else
+        f"- Your branch is `{branch}`, already checked out, cut from `{cut_from}`."
+    )
     scope = (
         "\n".join(f"- `{p}`" for p in declared)
         if declared else
@@ -79,7 +92,7 @@ def brief(
     )
 
     return f"""\
-## Task
+{first}## Task
 
 {issue.get('title', '')}
 
@@ -99,9 +112,9 @@ You are one of several agents working in parallel, each on a separate issue in
 its own worktree on its own branch. You cannot see the others and must not try
 to. Anything you need that is not here, read from the repository.
 
-- Your branch is `{branch}`, already checked out, cut from `{cut_from or base}`.
-- Commit your work, push the branch, and open a pull request whose body contains
-  `Closes #{issue['number']}`.
+{where}
+- Commit your work, push it with `git push -u origin {branch}`, and open a pull
+  request against `{base}` whose body contains `Closes #{issue['number']}`.
 - Do not merge. Do not rebase onto anything. Do not touch `{base}`.
 - Do not open issues, and do not start work the issue did not ask for. Note it in
   the pull request body instead.
@@ -113,4 +126,26 @@ to. Anything you need that is not here, read from the repository.
 - A pull request is open, with `Closes #{issue['number']}` in its body.
 
 {digest_text}
+"""
+
+
+def _subagent_start(branch: str, cut_from: str) -> str:
+    """The first thing a host subagent does: take the buildwork branch name, and prove the base."""
+    return f"""\
+## Before anything else
+
+The host made your worktree. It named the branch itself, and it may have cut
+it from a different base. Put the name right and check the base before you
+change a single file:
+
+1. Rename the branch: `git branch -m {branch}`
+2. Check the name: `git branch --show-current` must print `{branch}`.
+3. Check the base: `git rev-parse HEAD` and `git rev-parse {cut_from}` must
+   print the same commit.
+
+If a step fails, or a check does not hold, stop. Change nothing, and report
+which step it was and exactly what git printed. A branch under another name is
+invisible to the checks that collect your work, and a branch cut from another
+base carries somebody else's changes into your pull request.
+
 """

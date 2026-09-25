@@ -52,15 +52,15 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" plan --goal "<their words>" -
 For each issue in the **first wave only**, get its brief:
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" brief 143 [--allow-hotspot public/_headers]
+python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" brief 143 --runner <paseo|subagent> [--allow-hotspot public/_headers]
 ```
 
-That brief is the whole of what the worker is told. Send it verbatim. Do not summarise it, do not add to it, and do not tell a worker about the other workers.
+Pass the runner you are about to dispatch with: a subagent's brief opens by renaming the branch the host gave it and checking its base, and a Paseo worker's does not. That brief is the whole of what the worker is told. Send it verbatim. Do not summarise it, do not add to it, and do not tell a worker about the other workers.
 
 Then dispatch it with your runner - read [references/runners.md](references/runners.md) for the exact calls. In short:
 
 - **paseo** - `create_workspace` with `isolation: "worktree"`, `mode: "branch-off"` and `baseBranch` set to the plan's `base_ref` (`origin/<base>`, never a bare `main`), then `create_agent` in that workspace with `labels: {"buildwork": "1", "issue": "<N>"}` and `notifyOnFinish` left alone.
-- **subagent** - the host's own subagent tool with worktree isolation.
+- **subagent** - the host's own subagent tool with worktree isolation. Keep the `worktreeBranch` it returns. The host names the branch itself and cuts it from `origin/<default branch>`, which is why the brief starts by fixing both.
 
 Then **stop and go idle**. Do not poll, do not send hurry-ups, do not check on them. Agents take 10 to 30 minutes and the notification arrives on its own.
 
@@ -74,9 +74,9 @@ On each finish notification:
 python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" qc 143
 ```
 
-It reads which hotspot this issue was sent to change from the session `plan --save` recorded, so no `--allow-hotspot` is needed here. Exit 0 is a pass, 2 is a failure. Then **read the pull request against the issue's acceptance criteria yourself.** The gates are mechanical: they catch scope and hotspot violations and a failing test run. A semantically wrong change with no covering test passes all three. A QC pass is a floor, never a verdict.
+It reads which hotspot this issue was sent to change from the session `plan --save` recorded, so no `--allow-hotspot` is needed here. A subagent worker that stopped before renaming its branch is on the `worktreeBranch` the tool returned; pass it as `qc 143 --branch <worktreeBranch>`. Exit 0 is a pass, 2 is a failure. Then **read the pull request against the issue's acceptance criteria yourself.** The gates are mechanical: they catch scope and hotspot violations and a failing test run. A semantically wrong change with no covering test passes all three. A QC pass is a floor, never a verdict.
 
-**On failure: one rework, then a human.** Send the specific failure back to the same worker once, via `send_agent_prompt` or the equivalent. If it fails again, hand it to the human with what failed. Never a third attempt, never a loop.
+**On failure: one rework, then a human.** Send the specific failure back to the same worker once, via `send_agent_prompt` under paseo or `SendMessage` under subagent. If it fails again, hand it to the human with what failed. Never a third attempt, never a loop.
 
 ## 5. Order
 

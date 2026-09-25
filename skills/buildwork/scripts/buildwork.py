@@ -199,8 +199,30 @@ def cmd_brief(args: argparse.Namespace) -> int:
     print(digest_mod.brief(
         issue=issue, base=cfg.base, branch=branch, digest_text=text,
         declared=declared, allowed_hotspots=allowed, cut_from=gh.remote_base(cfg.base),
+        runner=_brief_runner(args, cfg, root),
     ))
     return 0
+
+
+def _brief_runner(args: argparse.Namespace, cfg: config_mod.Config, root: Path) -> str:
+    """Which runner this brief is for: the flag, then the saved session, then the config.
+
+    It changes what the worker is told first. A subagent's host names its
+    branch and picks its base, so that brief opens by putting both right; a
+    Paseo worker is already on the right branch. With `runner = "auto"` and
+    nothing saved, guessing would send one of them the wrong instructions.
+    """
+    if args.runner:
+        return args.runner
+    sess = session_mod.load(root)
+    if sess and sess.runner in config_mod.RUNNER_WAVE_CAP:
+        return sess.runner
+    if cfg.runner in config_mod.RUNNER_WAVE_CAP:
+        return cfg.runner
+    fail(
+        "brief needs to know the runner, because a subagent worker is told to rename its "
+        "branch first. Pass --runner paseo or --runner subagent, or run plan --save first."
+    )
 
 
 # --- qc -------------------------------------------------------------------
@@ -550,13 +572,16 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("brief", help="the whole of what one worker is told")
     p.add_argument("issue", type=int)
+    p.add_argument("--runner", choices=("paseo", "subagent"),
+                   help="who dispatches this worker (default: the saved session, then the config)")
     p.add_argument("--branch")
     p.add_argument("--allow-hotspot", action="append", help="a hotspot this worker alone may touch")
     p.set_defaults(func=cmd_brief)
 
     p = sub.add_parser("qc", help="the mechanical gates against a finished branch")
     p.add_argument("issue", type=int)
-    p.add_argument("--branch")
+    p.add_argument("--branch", help="the worker's branch, if it is not the buildwork name "
+                                    "(a subagent's worktreeBranch)")
     p.add_argument("--allow-hotspot", action="append")
     p.add_argument("--no-gate", action="store_true", help="skip the domain gate, check scope and hotspots only")
     p.set_defaults(func=cmd_qc)

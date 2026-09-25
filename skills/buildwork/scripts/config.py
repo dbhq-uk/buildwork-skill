@@ -20,8 +20,8 @@ CONFIG_PATH = ".github/buildwork.toml"
 RUNNERS = ("auto", "paseo", "subagent")
 
 # Per-runner wave caps. Paseo tabs are supervised and survive the session, so
-# four is readable. Host subagents die with the session and cannot be watched,
-# so two is as far as trust reaches.
+# four is readable. Host subagents die with the session and send every
+# permission prompt to it, so two is as far as trust reaches.
 RUNNER_WAVE_CAP = {"paseo": 4, "subagent": 2}
 
 

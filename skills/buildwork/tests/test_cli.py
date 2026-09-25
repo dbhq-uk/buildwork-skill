@@ -173,7 +173,29 @@ def test_brief_names_the_one_permitted_hotspot(repo, github, bw):
     repo.configure(HOTSPOT)
     github.issue(1, "headers", body="Change `public/_headers`.")
     result = bw("brief", "1", "--allow-hotspot", "public/_headers")
-    assert "permitted to touch public/_headers" in result.out
+    assert "permitted to touch `public/_headers`" in result.out
+
+
+def test_brief_names_the_gate_and_every_configured_hotspot(repo, github, bw):
+    repo.configure(
+        'enabled = true\nrunner = "paseo"\ngate = "make check"\n'
+        'hotspots = ["public/_headers", "src/routes.ts"]\n'
+    )
+    github.issue(1, "one", body="Change `src/a.py`.")
+    out = bw("brief", "1").out
+    assert "run `make check` in your worktree" in out
+    assert "- `public/_headers`\n- `src/routes.ts`" in out
+    assert "permitted" not in out
+
+
+def test_brief_reads_the_hotspot_permission_from_the_session_as_qc_does(repo, github, bw):
+    repo.configure(HOTSPOT)
+    github.issue(1, "headers", body="Change `public/_headers`.")
+    github.issue(2, "other", body="Change `src/other.py`.")
+    bw("plan", "--goal", "g", "--issues", "1,2", "--save")
+    assert "permitted to touch `public/_headers`" in bw("brief", "1").out
+    other = bw("brief", "2").out
+    assert "permitted" not in other and "- `public/_headers`" in other
 
 
 # A Claude Code worktree subagent's branch, as the Agent tool returns it in

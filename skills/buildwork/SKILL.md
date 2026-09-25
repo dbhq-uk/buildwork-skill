@@ -54,10 +54,10 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" plan --goal "<their words>" -
 For each issue in the **first wave only**, get its brief:
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" brief 143 --runner <paseo|subagent> [--allow-hotspot public/_headers]
+python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" brief 143 --runner <paseo|subagent>
 ```
 
-Pass the runner you are about to dispatch with: a subagent's brief opens by renaming the branch the host gave it and checking its base, and a Paseo worker's does not. That brief is the whole of what the worker is told. Send it verbatim. Do not summarise it, do not add to it, and do not tell a worker about the other workers.
+Pass the runner you are about to dispatch with: a subagent's brief opens by renaming the branch the host gave it and checking its base, and a Paseo worker's does not. The brief shows the worker the bar `qc` will hold it to: the `gate` command by name, and every configured hotspot by path, with the one this issue was sent to change, if any, read from the session `plan --save` recorded. `--allow-hotspot` adds one by hand, and is only needed without a saved session. That brief is the whole of what the worker is told. Send it verbatim. Do not summarise it, do not add to it, and do not tell a worker about the other workers.
 
 Then dispatch it with your runner - read [references/runners.md](references/runners.md) for the exact calls. In short:
 

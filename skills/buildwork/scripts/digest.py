@@ -59,6 +59,8 @@ def brief(
     cut_from: str | None = None,
     runner: str = "paseo",
     earlier: int = 0,
+    gate: str | None = None,
+    hotspots: tuple[str, ...] = (),
 ) -> str:
     """The whole of what a worker is told. It has no context but this.
 
@@ -69,6 +71,12 @@ def brief(
     and picks its base, so the brief opens by putting both right. Without it
     the worker commits to a branch no later command can find, cut from a base
     the config never named.
+
+    `gate` and `hotspots` come from the config, so the worker is shown the
+    exact bar `qc` will hold it to: the command it runs, and every path it
+    fails a branch for touching. A worker told only "the checks pass" and
+    "leave shared files alone" guesses, and a wrong guess spends its one
+    rework.
 
     `earlier` is the number of commits already on the branch. It is not zero
     only on a re-dispatch, and then the worker is told to build on them. A
@@ -96,13 +104,12 @@ def brief(
         "- The issue does not name files. Work out the scope from the issue, keep it tight, and say what you touched."
     )
 
-    hotspot_line = (
-        f"\n**You are the one change permitted to touch {', '.join(allowed_hotspots)} in this wave.** "
-        f"Other workers are explicitly barred from it.\n"
-        if allowed_hotspots else
-        "\n**Do not touch shared configuration, route registries, lockfiles or content plans.** "
-        "Other agents are working in parallel branches right now and those files conflict on every one of them. "
-        "If your issue cannot be done without one, stop and say so rather than editing it.\n"
+    hotspot_line = _hotspots(hotspots, allowed_hotspots)
+    checks = (
+        f"- The repository's own checks pass: run {_code(gate)} in your worktree before\n"
+        f"  you push. `qc` runs exactly that on your branch when you finish."
+        if gate else
+        "- The repository's own checks pass."
     )
 
     return f"""\
@@ -140,11 +147,45 @@ to. Anything you need that is not here, read from the repository.
 ## Done means
 
 - The issue's acceptance criteria are met.
-- The repository's own checks pass.
+{checks}
 - A pull request is open, with `Closes #{issue['number']}` in its body.
 
 {digest_text}
 """
+
+
+def _code(text: str) -> str:
+    """Markdown inline code that survives a backtick inside the command."""
+    return f"`` {text} ``" if "`" in text else f"`{text}`"
+
+
+def _hotspots(hotspots: tuple[str, ...], allowed: tuple[str, ...]) -> str:
+    """The hotspot rules by path: the one this worker may change, and every one it may not."""
+    barred = [spot for spot in hotspots if spot not in allowed]
+    parts: list[str] = []
+    if allowed:
+        parts.append(
+            f"**You are the one change permitted to touch {', '.join(_code(a) for a in allowed)} in this wave.** "
+            f"Other workers are explicitly barred from it."
+        )
+    if barred:
+        parts.append(
+            "**Do not touch these paths.** They are this repository's hotspots. Other agents are "
+            "working in parallel branches right now, these conflict on every one of them, and `qc` "
+            "fails a branch that changes one:\n\n"
+            + "\n".join(f"- {_code(spot)}" for spot in barred)
+        )
+        parts.append(
+            "If your issue cannot be done without one, stop and say so rather than editing it. "
+            "Leave any other shared file alone too."
+        )
+    elif not allowed:
+        parts.append(
+            "**Do not touch shared configuration, route registries, lockfiles or content plans.** "
+            "Other agents are working in parallel branches right now and those files conflict on every one of them. "
+            "If your issue cannot be done without one, stop and say so rather than editing it."
+        )
+    return "\n" + "\n\n".join(parts) + "\n"
 
 
 def _subagent_start(branch: str, cut_from: str) -> str:

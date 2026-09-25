@@ -81,7 +81,8 @@ moves only the remote-tracking ref; your local branch is left alone, and
 ### `gate`
 
 A shell command run in the worker's worktree at collection. Usually the test
-suite. Exit 0 passes.
+suite. Exit 0 passes. Every brief names it, so the worker runs the same
+command before it pushes.
 
 Leaving it unset is allowed and is reported by `doctor`, because it means
 nothing mechanical verifies a branch works before somebody merges it.
@@ -96,17 +97,20 @@ Files or directories where a parallel edit is guaranteed to conflict. Matching
 is exact path or directory prefix, so `docs/site` covers `docs/site/copy.md`
 and does not cover `docs/sitemap.xml`.
 
-Two effects:
+Three effects:
 
 - **Planning.** Two issues touching the same hotspot never share a wave.
+- **The brief.** Every worker is shown every hotspot by path: the one it was
+  sent to change, if any, and the ones it must not touch.
 - **QC.** A branch that touched a hotspot it was not sent to change fails,
   even if the issue declared it.
 
 The plan decides which issue *is* the hotspot change, and `plan --save`
-records it in the session. `qc` and `order` read that record, so the branch
-sent to change a hotspot passes and goes first in the merge order, and any
-other branch that touches it still fails. `--allow-hotspot` gives the same
-permission by hand, for `brief` and for `qc` outside a saved plan. With no
+records it in the session. `brief`, `qc` and `order` read that record, so the
+worker sent to change a hotspot is told so, its branch passes and goes first in
+the merge order, and any other branch that touches it still fails.
+`--allow-hotspot` gives the same permission by hand, for `brief` and for `qc`
+outside a saved plan. With no
 session, `order` knows of no permission and holds a hotspot branch back.
 
 ### `digest`

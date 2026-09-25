@@ -330,7 +330,13 @@ def cmd_brief(args: argparse.Namespace) -> int:
         print(f"! digest: {problem}", file=sys.stderr)
 
     declared = waves_mod.declared_files(issue.get("body") or "", root)
-    allowed = tuple(args.allow_hotspot or ())
+    # The plan's permission, as `qc` reads it, plus any given here. A brief
+    # that bars the worker from the hotspot it was sent to change sends it
+    # to stop before it starts.
+    sess = load_session(root)
+    allowed = tuple(dict.fromkeys(
+        tuple(args.allow_hotspot or ()) + (sess.allowed_hotspots(args.issue) if sess else ())
+    ))
     branch = args.branch or state.branch_for(args.issue, issue.get("title", ""))
     cut_from = gh.remote_base(cfg.base)
 
@@ -341,12 +347,13 @@ def cmd_brief(args: argparse.Namespace) -> int:
     print(digest_mod.brief(
         issue=issue, base=cfg.base, branch=branch, digest_text=text,
         declared=declared, allowed_hotspots=allowed, cut_from=cut_from,
-        runner=_brief_runner(args, cfg, root), earlier=earlier,
+        runner=_brief_runner(args, cfg, sess), earlier=earlier,
+        gate=cfg.gate, hotspots=cfg.hotspots,
     ))
     return 0
 
 
-def _brief_runner(args: argparse.Namespace, cfg: config_mod.Config, root: Path) -> str:
+def _brief_runner(args: argparse.Namespace, cfg: config_mod.Config, sess: session_mod.Session | None) -> str:
     """Which runner this brief is for: the flag, then the saved session, then the config.
 
     It changes what the worker is told first. A subagent's host names its
@@ -356,7 +363,6 @@ def _brief_runner(args: argparse.Namespace, cfg: config_mod.Config, root: Path) 
     """
     if args.runner:
         return args.runner
-    sess = load_session(root)
     if sess and sess.runner in config_mod.RUNNER_WAVE_CAP:
         return sess.runner
     if cfg.runner in config_mod.RUNNER_WAVE_CAP:

@@ -6,6 +6,7 @@ see harness.py.
 """
 
 import os
+import re
 import subprocess
 import sys
 
@@ -156,6 +157,117 @@ def test_brief_names_the_one_permitted_hotspot(repo, github, bw):
     github.issue(1, "headers", body="Change `public/_headers`.")
     result = bw("brief", "1", "--allow-hotspot", "public/_headers")
     assert "permitted to touch public/_headers" in result.out
+
+
+# A Claude Code worktree subagent's branch, as the Agent tool returns it in
+# `worktreeBranch`, cut from origin/<default branch> whatever the config says.
+AGENT_BRANCH = "worktree-agent-a1b2c3d4e5f6a7b8"
+FIRST_STEP = re.compile(r"`(git [^`]+)`")
+
+
+def subagent_worktree(repo, from_ref="origin/main"):
+    """The worktree the host makes: its own branch name, its own choice of base."""
+    repo.git("fetch", "-q", "origin")
+    tree = repo.trees / "agent-a1b2c3d4e5f6a7b8"
+    repo.git("worktree", "add", "-q", "-b", AGENT_BRANCH, str(tree), from_ref)
+    return tree
+
+
+def first_section(brief):
+    """The brief up to its second heading: what the worker does before anything else."""
+    heads = [m.start() for m in re.finditer(r"^## ", brief, re.M)]
+    return brief[heads[0]:heads[1]]
+
+
+def run_first_step(repo, tree, brief):
+    """Run the brief's first-step git commands in the worker's tree, as the worker would."""
+    outputs = []
+    for command in FIRST_STEP.findall(first_section(brief)):
+        outputs.append(repo.git(*command.split()[1:], cwd=tree).strip())
+    return outputs
+
+
+def test_a_subagent_brief_opens_by_renaming_the_branch_and_checking_the_base(repo, github, bw):
+    github.issue(1, "Fix the parser", body="Change `src/parser.py`.")
+    brief = bw("brief", "1", "--runner", "subagent").out
+    first = first_section(brief)
+    assert first.startswith("## Before anything else")
+    assert FIRST_STEP.findall(first) == [
+        "git branch -m buildwork/issue-1-fix-the-parser",
+        "git branch --show-current",
+        "git rev-parse HEAD",
+        "git rev-parse origin/main",
+    ]
+    assert "stop" in first
+    assert brief.index("## Before anything else") < brief.index("## Task")
+
+
+def test_a_paseo_brief_does_not_ask_for_a_rename(repo, github, bw):
+    github.issue(1, "Fix the parser", body="Change `src/parser.py`.")
+    brief = bw("brief", "1", "--runner", "paseo").out
+    assert brief.startswith("## Task")
+    assert "git branch -m" not in brief
+    assert "already checked out" in brief
+
+
+def test_brief_takes_the_runner_from_the_saved_session(repo, github, bw):
+    repo.configure('enabled = true\nrunner = "subagent"\n')
+    issues(github, 1, 2)
+    bw("plan", "--goal", "g", "--issues", "1,2", "--save")
+    repo.configure('enabled = true\nrunner = "auto"\n')
+    assert "git branch -m" in bw("brief", "1").out
+
+
+def test_brief_will_not_guess_the_runner(repo, github, bw):
+    repo.configure('enabled = true\nrunner = "auto"\n')
+    github.issue(1, "one")
+    result = bw("brief", "1")
+    assert result.code == 1
+    assert "--runner" in result.err
+
+
+def test_a_subagent_worker_that_follows_its_brief_is_found_by_qc_and_status(repo, github, bw):
+    repo.configure('enabled = true\nrunner = "subagent"\ngate = "test -f src/parser.py"\n')
+    github.issue(1, "Fix the parser", body="Change `src/parser.py`.")
+    github.issue(2, "Other", body="Change `src/other.py`.")
+    bw("plan", "--goal", "g", "--issues", "1,2", "--save")
+    tree = subagent_worktree(repo)
+
+    renamed, current, head, base = run_first_step(repo, tree, bw("brief", "1").out)
+    assert current == "buildwork/issue-1-fix-the-parser"
+    assert head == base
+
+    repo.commit("fix the parser", {"src/parser.py": "fixed\n"}, cwd=tree)
+    status = bw("status").out
+    assert "Running" in status
+    assert f"#1  running  buildwork/issue-1-fix-the-parser  {tree.name}" in status
+    result = bw("qc", "1")
+    assert result.code == 0, result.text
+    assert "gate" in result.out and "was not run" not in result.err
+
+
+def test_a_subagent_cut_from_the_wrong_base_fails_its_first_check(repo, github, bw):
+    """base = "develop", but the host cut the worktree from origin/main, its default branch."""
+    repo.git("branch", "develop", "main")
+    repo.git("push", "-q", "origin", "develop")
+    repo.configure('enabled = true\nrunner = "subagent"\nbase = "develop"\n')
+    github.issue(1, "one", body="Change `src/a.py`.")
+    tree = subagent_worktree(repo, from_ref="origin/main")
+
+    renamed, current, head, base = run_first_step(repo, tree, bw("brief", "1").out)
+    assert current == "buildwork/issue-1-one"
+    assert head != base
+
+
+def test_qc_collects_a_worker_that_never_renamed_its_branch(repo, github, bw):
+    """It stopped before the rename. The orchestrator passes the worktreeBranch it was given."""
+    repo.configure('enabled = true\nrunner = "subagent"\ngate = "test -f src/a.py"\n')
+    github.issue(1, "one", body="Change `src/a.py`.")
+    tree = subagent_worktree(repo)
+    repo.commit("work", {"src/a.py": "a\n"}, cwd=tree)
+    result = bw("qc", "1", "--branch", AGENT_BRANCH)
+    assert result.code == 0, result.text
+    assert "was not run" not in result.err
 
 
 def test_brief_for_a_missing_issue_fails_with_gh_message(repo, github, bw):

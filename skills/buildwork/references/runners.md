@@ -22,8 +22,8 @@ untestable part is small enough to read.
 | Verb | paseo | subagent |
 |---|---|---|
 | `dispatch` | `create_workspace` then `create_agent` | the host's subagent tool, worktree isolation |
-| `list` | `list_agents`, then keep the agents whose `issue` label matches | nothing survives; reconstruct instead |
-| `status` | the finish notification | the tool's own return value |
+| `list` | `list_agents`, then keep the agents whose `issue` label matches | `/tasks`, this session only; reconstruct instead |
+| `status` | the finish notification | the finish notification |
 | `collect` | read the pull request | read the pull request |
 
 `collect` is identical because the result of a worker is a branch and a pull
@@ -49,7 +49,7 @@ this clone last pulled. After wave 1 merges on GitHub, that is a base without
 wave 1 in it. `plan` fetches `origin/<base>` before it prints anything, and
 names it as `base_ref`, so the ref is current when you dispatch.
 
-Then, with the returned `workspaceId`:
+Then, with the returned `workspaceId`, and the brief from `brief 143 --runner paseo`:
 
 ```
 create_agent(
@@ -100,19 +100,53 @@ again, and the merged work can change which issues collide.
 ## subagent
 
 Use the host's own subagent tool with worktree isolation. In Claude Code that
-is the Agent tool with `isolation: "worktree"`.
+is the Agent tool with `isolation: "worktree"`. Get each brief with
+`brief <N> --runner subagent` and send it verbatim as the prompt.
 
-Worth being straight about what you lose:
+### What the host does to the worktree
 
-- **The wave cap drops to 2.** A host subagent is not supervised, cannot be
-  watched mid-run, and cannot be intervened in.
+- **It names the branch itself.** A Claude Code worktree subagent works on a
+  branch called `worktree-agent-<id>`, not `buildwork/issue-<N>-<slug>`. The
+  Agent tool returns that name as `worktreeBranch`; the name is not
+  documented anywhere else.
+- **It cuts the worktree from `origin/<default branch>`**, whatever `base`
+  says, and refreshes that ref only when it is more than 24 hours old
+  ([sub-agents](https://code.claude.com/docs/en/sub-agents),
+  [worktrees](https://code.claude.com/docs/en/worktrees)).
+
+So the subagent brief opens with three steps, before the task: rename the
+branch to the buildwork name, check the name took, and check that `HEAD` is
+the same commit as `origin/<base>`. If a check fails, the worker stops and
+says so before it changes anything. `plan` has just fetched `origin/<base>`,
+so a worker cut from the right base passes; one cut from `main` when `base`
+is `develop` does not.
+
+Once renamed, the branch is found by `qc`, `order` and `status` like any
+other. If a worker stopped before the rename, collect it by the name the Agent
+tool returned: `qc <N> --branch <worktreeBranch>`. Keep that name when you
+dispatch.
+
+### What a Claude Code subagent can do today
+
+- **It runs in the background** and notifies you when it finishes, so you go
+  idle exactly as with Paseo.
+- **Its permission prompts appear in your session**, and you answer them there.
+- **You can message it** with `SendMessage`, which is how the one bounded
+  rework is sent, **stop it** with `TaskStop`, and **list what is running**
+  with `/tasks`.
+
+### What you still lose against Paseo
+
 - **Nothing survives the session.** If your session dies, the agents die with
   it. The branches and pull requests do not, which is why resume is built on
   those and not on agent ids.
-- **There is no `list`.** `buildwork.py status` reconstructs from git and
-  GitHub instead, which is correct anyway.
+- **The wave cap stays at 2.** Every worker's permission prompts land in the
+  session you are orchestrating from, and none of them outlives it.
+- **There is no `list` that outlives the session.** `/tasks` covers this
+  session only; `buildwork.py status` reconstructs from git and GitHub, which
+  is correct anyway.
 
-Everything else - the brief, the QC gates, the merge order - is unchanged.
+Everything else - the QC gates, the merge order - is unchanged.
 
 ## What was rejected, and why
 

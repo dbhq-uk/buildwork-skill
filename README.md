@@ -120,7 +120,7 @@ Full field reference: [`references/config.md`](skills/buildwork/references/confi
 | | paseo | subagent |
 |---|---|---|
 | Survives your session | yes | no |
-| You can watch and intervene | yes | no |
+| You can watch and intervene | yes | while your session lasts: message, stop, list |
 | Concurrent cap | 4 | 2 |
 | Resume after a crash | yes | yes |
 

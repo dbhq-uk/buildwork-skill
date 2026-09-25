@@ -97,6 +97,7 @@ one's.
 
 - **4** concurrent workers is where pull-request-per-agent stops being
   comfortable, and where Paseo tabs stop being readable.
-- **2** is the cap on host subagents, which cannot be watched or intervened in.
+- **2** is the cap on host subagents, which die with your session and send every
+  permission prompt to it.
 - **15x** the tokens of a single conversation, roughly, for a multi-agent run.
 - **1** rework per failed collection. Then a human.

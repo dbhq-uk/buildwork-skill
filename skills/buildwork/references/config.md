@@ -82,8 +82,12 @@ Two effects:
 - **QC.** A branch that touched a hotspot it was not sent to change fails,
   even if the issue declared it.
 
-`--allow-hotspot` marks the one worker that *is* the hotspot change, for both
-`brief` and `qc`.
+The plan decides which issue *is* the hotspot change, and `plan --save`
+records it in the session. `qc` and `order` read that record, so the branch
+sent to change a hotspot passes and goes first in the merge order, and any
+other branch that touches it still fails. `--allow-hotspot` gives the same
+permission by hand, for `brief` and for `qc` outside a saved plan. With no
+session, `order` knows of no permission and holds a hotspot branch back.
 
 ### `digest`
 

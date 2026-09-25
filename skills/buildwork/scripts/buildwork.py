@@ -124,6 +124,10 @@ def cmd_plan(args: argparse.Namespace) -> int:
         session_mod.save(root, session_mod.Session(
             repo=root.name, goal=args.goal or "", runner=runner,
             issues=plan.dispatched, waves=plan.waves,
+            hotspots={
+                str(c.number): list(c.hotspots)
+                for c in candidates if c.hotspots and c.number in plan.dispatched
+            },
         ))
 
     if args.json:
@@ -215,9 +219,16 @@ def cmd_qc(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
 
+    # The plan's permission, saved at `plan --save`, plus any given here. The
+    # orchestrator runs `qc N` bare at collection, so without the saved one
+    # the branch sent to change a hotspot would fail for doing exactly that.
+    sess = session_mod.load(root)
+    allowed = tuple(dict.fromkeys(
+        tuple(args.allow_hotspot or ()) + (sess.allowed_hotspots(args.issue) if sess else ())
+    ))
     report = qc_mod.check(
         issue=args.issue, branch=branch, changed=changed, declared=declared,
-        hotspots=cfg.hotspots, allowed_hotspots=tuple(args.allow_hotspot or ()),
+        hotspots=cfg.hotspots, allowed_hotspots=allowed,
         gate_command=cfg.gate, worktree=worktree,
     )
 
@@ -255,9 +266,13 @@ def cmd_order(args: argparse.Namespace) -> int:
         body = gh.issue(root, number).get("body") or ""
         declared = waves_mod.declared_files(body, root)
         changed = gh.changed_files(root, cfg.base, branch)
+        # Without the plan's permission, the one branch sent to change a
+        # hotspot fails the hotspot check here and is held back, and the
+        # first ordering rule, hotspot first, can never fire.
         report = qc_mod.check(
             issue=number, branch=branch, changed=changed, declared=declared,
             hotspots=cfg.hotspots,
+            allowed_hotspots=sess.allowed_hotspots(number) if sess else (),
         )
         items.append(order_mod.Ready(
             issue=number, branch=branch,

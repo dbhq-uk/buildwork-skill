@@ -249,11 +249,10 @@ def cmd_order(args: argparse.Namespace) -> int:
         if not branch:
             continue
         pr = gh.pr_for_branch(pulls, branch)
-        try:
-            issue = gh.issue(root, number)
-            body = issue.get("body") or ""
-        except gh.GhError:
-            body = ""
+        # No fallback to an empty body. With no body the issue declares no
+        # paths, the scope check reports nothing to check, and a branch gh
+        # could not read about is offered for merge.
+        body = gh.issue(root, number).get("body") or ""
         declared = waves_mod.declared_files(body, root)
         changed = gh.changed_files(root, cfg.base, branch)
         report = qc_mod.check(
@@ -280,6 +279,12 @@ def cmd_status(args: argparse.Namespace) -> int:
     root, cfg = load_ctx(args.path)
     sess = session_mod.load(root)
 
+    # Everything is read before anything is printed. A gh failure raises and
+    # stops the command with gh's own message, rather than half a report.
+    all_branches = gh.branches(root)
+    worktrees = gh.worktrees(root)
+    open_pulls = gh.open_pulls(root)
+
     if sess:
         stale = "  (STALE - started " + sess.age_text() + ", check it is still what you want)" if sess.stale else ""
         print(f"Session: {sess.goal or '(no goal recorded)'}{stale}")
@@ -290,9 +295,9 @@ def cmd_status(args: argparse.Namespace) -> int:
 
     items = state.reconstruct(
         wave_issues=sess.issues if sess else [],
-        all_branches=gh.branches(root),
-        worktrees=gh.worktrees(root),
-        open_pulls=gh.open_pulls(root),
+        all_branches=all_branches,
+        worktrees=worktrees,
+        open_pulls=open_pulls,
     )
     print(state.summarise(items))
     return 0
@@ -385,8 +390,29 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     if sess and sess.stale:
         problems.append(f"Session record is {sess.age_text()} old: {sess.goal!r}. Probably finished; clear it.")
 
+    gh_problems, gh_error = _gh_checks(root)
+    problems += gh_problems
+    pulls: list[dict] = []
+    if gh_error is None:
+        try:
+            pulls = gh.open_pulls(root)
+        except gh.GhError as exc:
+            gh_error = str(exc)
+
+    if gh_error is not None:
+        # Reconciling against a gh that failed is how every branch came to look
+        # stranded. Report what is known and stop.
+        problems.append(
+            "Branches and pull requests were not checked, because gh could not answer. "
+            "Every other command will stop on the same error until gh works."
+        )
+        print(f"{len(problems)} thing(s) to look at:\n")
+        for problem in problems:
+            print(f"- {problem}")
+        print(f"\ngh failed: {gh_error}", file=sys.stderr)
+        return 1
+
     branches = gh.branches(root)
-    pulls = gh.open_pulls(root)
     worktrees = gh.worktrees(root)
     items = state.reconstruct(sess.issues if sess else [], branches, worktrees, pulls)
 
@@ -409,6 +435,36 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     for problem in problems:
         print(f"- {problem}")
     return 0
+
+
+def _gh_checks(root: Path) -> tuple[list[str], str | None]:
+    """Problems with gh itself, and gh's own error if it cannot be used at all.
+
+    Every other command trusts gh's answers. These are the ways it answers
+    wrongly or not at all: no working login, a clone gh cannot map to a
+    repository, and a clone with several remotes where gh has picked one on
+    its own.
+    """
+    try:
+        gh.auth_status(root)
+    except gh.GhError as exc:
+        return ["gh is not logged in, or its token no longer works. Run `gh auth login`."], str(exc)
+    try:
+        name = gh.repo_name(root)
+    except gh.GhError as exc:
+        return [
+            "gh cannot tell which GitHub repository this clone is. Check `git remote -v`, "
+            "or run `gh repo set-default`."
+        ], str(exc)
+
+    names = gh.remotes(root)
+    if len(names) > 1 and not gh.default_remote_set(root):
+        return [
+            f"This clone has {len(names)} remotes ({', '.join(names)}) and no default, so gh "
+            f"chose {name} on its own. If that is not the repository you mean, run "
+            f"`gh repo set-default`."
+        ], None
+    return [], None
 
 
 # --- cli ------------------------------------------------------------------

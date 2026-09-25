@@ -26,7 +26,8 @@ convention that a skill keeps its state in `~/.dbhq/<skill>/`.
 ### Network
 
 **Only through `gh`, and only reads.** Every call is `gh issue list`,
-`gh issue view`, `gh pr list` or `gh api ... /dependencies/blocked_by`. The
+`gh issue view`, `gh pr list` or `gh api ... /dependencies/blocked_by`, plus
+`gh auth status` and `gh repo view` from `doctor`. The
 scripts never open a socket themselves and never send a request anywhere that
 is not GitHub via a CLI you already trust.
 

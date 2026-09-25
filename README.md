@@ -87,7 +87,9 @@ whole skill directory is symlinked untouched, while Codex does not, so its
 ## Requirements
 
 Python 3, standard library only. `git`, and `gh` authenticated - the whole
-skill is pull requests, so an unauthenticated `gh` fails at the first one.
+skill is pull requests and issues. When `gh` fails, every command stops with
+gh's own error rather than reading the failure as an empty repository, and
+`doctor` checks the login and which repository `gh` resolves this clone to.
 
 Plus a runner: Paseo, or a host whose subagent tool can create a git
 worktree. Neither is installed by this skill.

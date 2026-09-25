@@ -364,7 +364,6 @@ def test_init_suggests_the_files_changed_most_often(repo, github, bw):
 
 # --- open bugs: each fails today, and its fix removes the marker ------------
 
-@bug(5)
 def test_plan_reports_a_failing_gh_instead_of_nothing_to_run(repo, github, bw):
     issues(github, 1, 2)
     github.fail("issue", "list")
@@ -373,7 +372,6 @@ def test_plan_reports_a_failing_gh_instead_of_nothing_to_run(repo, github, bw):
     assert "Bad credentials" in result.err
 
 
-@bug(5)
 def test_status_reports_a_failing_gh(repo, github, bw):
     repo.branch("buildwork/issue-1-a", {"a.txt": "a\n"})
     github.fail("pr", "list")
@@ -382,7 +380,6 @@ def test_status_reports_a_failing_gh(repo, github, bw):
     assert "Bad credentials" in result.err
 
 
-@bug(5)
 def test_order_reports_a_failing_gh(repo, github, bw):
     issues(github, 1)
     repo.branch("buildwork/issue-1-issue-1", {"src/f1.py": "x\n"})
@@ -392,7 +389,6 @@ def test_order_reports_a_failing_gh(repo, github, bw):
     assert "Bad credentials" in result.err
 
 
-@bug(5)
 def test_doctor_reports_a_failing_gh_instead_of_stranded_work(repo, github, bw):
     repo.branch("buildwork/issue-1-a", {"a.txt": "a\n"})
     github.fail("pr", "list")
@@ -402,17 +398,55 @@ def test_doctor_reports_a_failing_gh_instead_of_stranded_work(repo, github, bw):
     assert "stranded" not in result.out
 
 
-@bug(5)
 def test_doctor_reports_an_unauthenticated_gh(repo, github, bw):
     github.authenticated = False
     result = bw("doctor")
-    assert "gh auth login" in result.text
+    assert result.code != 0
+    assert "gh is not logged in" in result.out
+    assert "gh auth login" in result.err
 
 
-@bug(5)
+def test_every_command_stops_when_gh_is_not_logged_in(repo, github, bw):
+    issues(github, 1, 2)
+    repo.branch("buildwork/issue-1-issue-1", {"src/f1.py": "x\n"})
+    github.authenticated = False
+    for command in (["plan"], ["status"], ["order"]):
+        result = bw(*command)
+        assert result.code != 0, command
+        assert "gh auth login" in result.err, command
+
+
 def test_doctor_reports_a_clone_with_no_default_remote(repo, github, bw):
     repo.git("remote", "add", "upstream", str(repo.remote))
-    assert "set-default" in bw("doctor").text
+    result = bw("doctor")
+    assert "2 remotes (origin, upstream)" in result.out
+    assert "chose owner/repo on its own" in result.out
+    assert "gh repo set-default" in result.out
+
+
+def test_doctor_is_quiet_about_remotes_once_a_default_is_set(repo, github, bw):
+    repo.git("remote", "add", "upstream", str(repo.remote))
+    repo.git("config", "remote.origin.gh-resolved", "base")
+    assert "set-default" not in bw("doctor").out
+
+
+def test_doctor_reports_a_clone_gh_cannot_resolve(repo, github, bw):
+    github.fail("repo", "view", stderr="none of the git remotes configured for this repository point to a known GitHub host")
+    result = bw("doctor")
+    assert result.code != 0
+    assert "cannot tell which GitHub repository" in result.out
+    assert "known GitHub host" in result.err
+
+
+def test_order_stops_when_an_issue_cannot_be_read(repo, github, bw):
+    """A failed read used to become an empty body, which switched the scope check off."""
+    issues(github, 1)
+    repo.branch("buildwork/issue-1-issue-1", {"src/f1.py": "x\n", "src/stray.py": "s\n"})
+    github.fail("issue", "view", "1")
+    result = bw("order")
+    assert result.code != 0
+    assert "Bad credentials" in result.err
+    assert "Proposed merge order" not in result.out
 
 
 @bug(6)

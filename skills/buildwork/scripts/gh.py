@@ -35,6 +35,14 @@ def _run(args: list[str], cwd: Path | None = None, check: bool = True) -> str:
 
 
 def _json(args: list[str], cwd: Path | None = None, default=None):
+    """Run a command and parse its JSON.
+
+    Passing `default` means a failure is an acceptable answer and the exit
+    code is not checked. Only pass one where "gh could not say" and "there is
+    nothing" really are the same thing. A list call is never one of those: a
+    failed `gh issue list` that reads as `[]` tells the user there is nothing
+    to run, when the truth is that gh could not answer.
+    """
     out = _run(args, cwd=cwd, check=default is None)
     if not out.strip():
         return default
@@ -100,10 +108,11 @@ def diff_size(cwd: Path, base: str, branch: str) -> int:
 # --- gh -------------------------------------------------------------------
 
 def open_issues(cwd: Path, limit: int = 200) -> list[dict]:
+    """Every open issue. Raises GhError, with gh's stderr, when gh fails."""
     return _json(
         ["gh", "issue", "list", "--state", "open", "--limit", str(limit),
          "--json", "number,title,body,labels,url"],
-        cwd=cwd, default=[],
+        cwd=cwd,
     ) or []
 
 
@@ -115,11 +124,41 @@ def issue(cwd: Path, number: int) -> dict:
 
 
 def open_pulls(cwd: Path, limit: int = 100) -> list[dict]:
+    """Every open pull request. Raises GhError, with gh's stderr, when gh fails."""
     return _json(
         ["gh", "pr", "list", "--state", "open", "--limit", str(limit),
          "--json", "number,title,headRefName,url,isDraft,body"],
-        cwd=cwd, default=[],
+        cwd=cwd,
     ) or []
+
+
+def auth_status(cwd: Path) -> None:
+    """Raise GhError, carrying gh's own message, unless gh is logged in with a working token."""
+    _run(["gh", "auth", "status"], cwd=cwd)
+
+
+def repo_name(cwd: Path) -> str:
+    """The `owner/repo` gh resolves this clone to. Raises GhError if it cannot."""
+    data = _json(["gh", "repo", "view", "--json", "nameWithOwner"], cwd=cwd)
+    if not isinstance(data, dict) or not data.get("nameWithOwner"):
+        raise GhError("gh repo view did not name a repository")
+    return data["nameWithOwner"]
+
+
+def remotes(cwd: Path) -> list[str]:
+    return [line.strip() for line in _run(["git", "remote"], cwd=cwd).splitlines() if line.strip()]
+
+
+def default_remote_set(cwd: Path) -> bool:
+    """Whether `gh repo set-default` has been run in this clone.
+
+    gh records the choice as `remote.<name>.gh-resolved` in the git config.
+    Without it, and with more than one remote, gh picks a remote by its own
+    precedence and says nothing, so every answer may be about another
+    repository.
+    """
+    out = _run(["git", "config", "--get-regexp", r"^remote\..*\.gh-resolved$"], cwd=cwd, check=False)
+    return bool(out.strip())
 
 
 BLOCKED_BY_PROSE = re.compile(r"\b(?:blocked by|depends on|after)\s+#(\d+)", re.I)

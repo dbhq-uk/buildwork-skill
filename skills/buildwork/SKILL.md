@@ -15,6 +15,8 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" doctor
 
 No `.github/buildwork.toml`, or no `enabled = true` in it, means this repository has not opted in. Say so and stop. Offer `init` if they want one.
 
+If `doctor` says gh is not logged in or cannot tell which repository this is, say so and stop. Every command reads GitHub through gh, and each one stops with gh's own error until it works. If it says gh chose one of several remotes on its own, repeat that to the human before planning.
+
 ## 1. Ask the goal. Always
 
 **Never dispatch before asking what this session is for.** One question, then wait:

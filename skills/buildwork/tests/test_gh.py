@@ -99,3 +99,36 @@ def test_pr_for_branch_matches_on_head():
 def test_a_missing_binary_is_a_gh_error(tmp_path):
     with pytest.raises(gh.GhError, match="not installed"):
         gh._run(["definitely-not-a-real-command-buildwork"], cwd=tmp_path)
+
+
+def test_a_failing_issue_list_raises_with_gh_stderr(repo, gh_env):
+    """Never `[]`: an empty list reads as "nothing to run"."""
+    gh_env.fail("issue", "list")
+    with pytest.raises(gh.GhError, match="Bad credentials"):
+        gh.open_issues(repo.root)
+
+
+def test_a_failing_pr_list_raises_with_gh_stderr(repo, gh_env):
+    """Never `[]`: an empty list makes every branch look stranded."""
+    gh_env.fail("pr", "list")
+    with pytest.raises(gh.GhError, match="Bad credentials"):
+        gh.open_pulls(repo.root)
+
+
+def test_auth_status_raises_when_not_logged_in(repo, gh_env):
+    gh.auth_status(repo.root)
+    gh_env.authenticated = False
+    gh_env.save()
+    with pytest.raises(gh.GhError, match="gh auth login"):
+        gh.auth_status(repo.root)
+
+
+def test_repo_name_is_what_gh_resolves(repo, gh_env):
+    assert gh.repo_name(repo.root) == "owner/repo"
+
+
+def test_default_remote_is_read_from_git_config(repo):
+    assert gh.remotes(repo.root) == ["origin"]
+    assert not gh.default_remote_set(repo.root)
+    repo.git("config", "remote.origin.gh-resolved", "base")
+    assert gh.default_remote_set(repo.root)

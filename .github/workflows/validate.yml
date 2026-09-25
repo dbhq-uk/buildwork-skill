@@ -55,6 +55,18 @@ jobs:
             exit 1
           fi
 
+      # Claude Code substitutes only the braced `${CLAUDE_SKILL_DIR}`. The
+      # unbraced form is left for the shell, where the variable is not set, so
+      # every command would run as `/scripts/buildwork.py` and fail. A literal
+      # `$CLAUDE_SKILL_DIR` never occurs inside the braced form, so a
+      # fixed-string match is enough.
+      - name: Skill paths use the braced form Claude Code substitutes
+        run: |
+          if grep -rnF '$CLAUDE_SKILL_DIR' --include='*.md' skills/ ; then
+            echo "Write \${CLAUDE_SKILL_DIR} with braces. Claude Code does not substitute the unbraced form."
+            exit 1
+          fi
+
       - name: No merge verb reached the scripts
         run: |
           if grep -rInE 'gh pr merge|git merge |git push .*(main|master)|--admin' skills/buildwork/scripts/ ; then

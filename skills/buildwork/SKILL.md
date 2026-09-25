@@ -10,7 +10,7 @@ You are the orchestrator. You plan, dispatch, check and report. **You do not edi
 ## Before anything
 
 ```bash
-python3 "$CLAUDE_SKILL_DIR/scripts/buildwork.py" doctor
+python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" doctor
 ```
 
 No `.github/buildwork.toml`, or no `enabled = true` in it, means this repository has not opted in. Say so and stop. Offer `init` if they want one.
@@ -26,7 +26,7 @@ The goal filters the roadmap. Without it you will run whatever is at the top of 
 ## 2. Plan
 
 ```bash
-python3 "$CLAUDE_SKILL_DIR/scripts/buildwork.py" plan --goal "<their words>" [--issues 12,14,19]
+python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" plan --goal "<their words>" [--issues 12,14,19]
 ```
 
 Pass `--issues` when the goal points at specific issues; otherwise it reads `roadmap.md`.
@@ -44,13 +44,13 @@ Show the waves and **wait for approval**. Nothing is created until they say go.
 Record the session first, then dispatch:
 
 ```bash
-python3 "$CLAUDE_SKILL_DIR/scripts/buildwork.py" plan --goal "<their words>" --save --json
+python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" plan --goal "<their words>" --save --json
 ```
 
 For each issue in the **first wave only**, get its brief:
 
 ```bash
-python3 "$CLAUDE_SKILL_DIR/scripts/buildwork.py" brief 143 [--allow-hotspot public/_headers]
+python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" brief 143 [--allow-hotspot public/_headers]
 ```
 
 That brief is the whole of what the worker is told. Send it verbatim. Do not summarise it, do not add to it, and do not tell a worker about the other workers.
@@ -69,7 +69,7 @@ Dispatch wave 2 only when wave 1 is collected and merged. A later wave is cut fr
 On each finish notification:
 
 ```bash
-python3 "$CLAUDE_SKILL_DIR/scripts/buildwork.py" qc 143
+python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" qc 143
 ```
 
 Exit 0 is a pass, 2 is a failure. Then **read the pull request against the issue's acceptance criteria yourself.** The gates are mechanical: they catch scope and hotspot violations and a failing test run. A semantically wrong change with no covering test passes all three. A QC pass is a floor, never a verdict.
@@ -81,7 +81,7 @@ Exit 0 is a pass, 2 is a failure. Then **read the pull request against the issue
 When the wave is in:
 
 ```bash
-python3 "$CLAUDE_SKILL_DIR/scripts/buildwork.py" order
+python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" order
 ```
 
 Give them the list with its reasons. **Then stop.** You do not merge, you do not `gh pr merge`, and you do not push to the base branch. In a repository where merging deploys, that rule is the only thing between an agent and production.
@@ -89,7 +89,7 @@ Give them the list with its reasons. **Then stop.** You do not merge, you do not
 ## Any time
 
 ```bash
-python3 "$CLAUDE_SKILL_DIR/scripts/buildwork.py" status
+python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" status
 ```
 
 Reconstructed from git branches, open pull requests and worktrees - so it is correct after a crash, a reboot, or a session that died, and it needs no session record at all. Lead with **Stalled**: a branch with no worktree and no pull request is work somebody paid for and nobody collected.

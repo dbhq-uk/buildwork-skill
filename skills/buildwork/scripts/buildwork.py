@@ -60,7 +60,15 @@ def load_ctx(path: str) -> tuple[Path, config_mod.Config]:
 
 def cmd_plan(args: argparse.Namespace) -> int:
     root, cfg = load_ctx(args.path)
-    runner = cfg.runner if cfg.runner != "auto" else (args.runner or "subagent")
+    # `auto` is resolved by the agent, which can see which runner tools it
+    # has. A script cannot. Guessing subagent here capped every Paseo session
+    # at 2 and recorded it as the wrong runner.
+    if cfg.runner == "auto" and not args.runner:
+        fail(
+            'The config says runner = "auto", so plan needs --runner paseo or --runner subagent. '
+            "Pass paseo if the Paseo tools are available, subagent if a worktree-capable subagent tool is."
+        )
+    runner = cfg.runner if cfg.runner != "auto" else args.runner
     cap = cfg.cap_for(runner)
 
     # Every wave is cut from origin/<base> as it is now. Without the fetch, a
@@ -681,7 +689,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("plan", help="work out the waves, or refuse to fan out")
     p.add_argument("--goal", default="", help="the session goal, in the human's words")
     p.add_argument("--issues", help="comma-separated issue numbers, overriding the roadmap")
-    p.add_argument("--runner", choices=("paseo", "subagent"), help="resolve runner=auto")
+    p.add_argument("--runner", choices=("paseo", "subagent"),
+                   help="the runner you will dispatch with; required when the config says runner = \"auto\"")
     p.add_argument("--save", action="store_true", help="record the session (only after the human approves)")
     p.add_argument("--json", action="store_true")
     p.set_defaults(func=cmd_plan)

@@ -44,6 +44,14 @@ def test_every_command_names_a_script_that_exists_after_substitution():
         )
 
 
+def test_every_plan_command_names_its_runner():
+    """With runner = "auto", plan refuses without --runner, and a guessed runner sets the wrong cap."""
+    plans = [c for c in commands() if re.search(r"buildwork\.py\" plan\b", c)]
+    assert plans
+    for command in plans:
+        assert "--runner" in command, command
+
+
 def test_no_unbraced_skill_dir_anywhere_in_the_skill():
     for path in SKILL_DIR.rglob("*.md"):
         assert "$CLAUDE_SKILL_DIR" not in path.read_text(encoding="utf-8"), path

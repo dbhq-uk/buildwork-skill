@@ -28,8 +28,10 @@ The goal filters the roadmap. Without it you will run whatever is at the top of 
 ## 2. Plan
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" plan --goal "<their words>" [--issues 12,14,19]
+python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" plan --goal "<their words>" --runner <paseo|subagent> [--issues 12,14,19]
 ```
+
+Pass `--runner paseo` when you can see the Paseo MCP tools (`create_workspace`, `create_agent`), and `--runner subagent` when you have a subagent tool that can create a git worktree instead. With neither, stop: there is nothing here to run workers. The runner sets the wave cap, 4 under Paseo and 2 under subagents, so a wrong one plans the wrong waves. With `runner = "auto"` in the config, `plan` refuses without it.
 
 Pass `--issues` when the goal points at specific issues; otherwise it reads `roadmap.md`.
 
@@ -46,7 +48,7 @@ Show the waves and **wait for approval**. Nothing is created until they say go.
 Record the session first, then dispatch:
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" plan --goal "<their words>" --save --json
+python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" plan --goal "<their words>" --runner <paseo|subagent> --save --json
 ```
 
 For each issue in the **first wave only**, get its brief:

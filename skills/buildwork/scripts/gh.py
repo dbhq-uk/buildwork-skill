@@ -123,11 +123,17 @@ def issue(cwd: Path, number: int) -> dict:
     )
 
 
-def open_pulls(cwd: Path, limit: int = 100) -> list[dict]:
-    """Every open pull request. Raises GhError, with gh's stderr, when gh fails."""
+def pulls(cwd: Path, limit: int = 200) -> list[dict]:
+    """Recent pull requests in every state, newest first. Raises GhError when gh fails.
+
+    Every state, not only open. After a squash merge the local branch is
+    usually still there, and with only open pull requests to match it against
+    a finished issue looks exactly like an agent that died: a branch with no
+    worktree and no pull request.
+    """
     return _json(
-        ["gh", "pr", "list", "--state", "open", "--limit", str(limit),
-         "--json", "number,title,headRefName,url,isDraft,body"],
+        ["gh", "pr", "list", "--state", "all", "--limit", str(limit),
+         "--json", "number,title,headRefName,url,isDraft,state"],
         cwd=cwd,
     ) or []
 
@@ -183,10 +189,3 @@ def blocked_by(cwd: Path, number: int, body: str = "") -> list[int]:
     if isinstance(data, list) and data:
         return sorted({int(item["number"]) for item in data if "number" in item})
     return sorted({int(m) for m in BLOCKED_BY_PROSE.findall(body or "")})
-
-
-def pr_for_branch(pulls: list[dict], branch: str) -> dict | None:
-    for pr in pulls:
-        if pr.get("headRefName") == branch:
-            return pr
-    return None

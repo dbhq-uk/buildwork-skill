@@ -512,30 +512,48 @@ def merged_wave(repo, github, bw):
     github.pull(12, "buildwork/issue-2-issue-2")
 
 
-@bug(7)
 def test_status_shows_a_merged_pull_request_as_merged(repo, github, bw):
     merged_wave(repo, github, bw)
     result = bw("status")
     assert "Stalled" not in result.out
-    assert "merged" in result.out.lower()
+    assert "Merged - done" in result.out
+    assert "#1  merged  buildwork/issue-1-issue-1  PR #11" in result.out
 
 
-@bug(7)
 def test_doctor_does_not_call_merged_work_stranded(repo, github, bw):
     merged_wave(repo, github, bw)
     assert "stranded" not in bw("doctor").out
 
 
-@bug(7)
 def test_order_leaves_out_merged_and_closed_pull_requests(repo, github, bw):
     merged_wave(repo, github, bw)
     github.issue(3, "issue 3", body="Change `src/f3.py`.")
     repo.branch("buildwork/issue-3-issue-3", {"src/f3.py": "x\n"})
     github.pull(13, "buildwork/issue-3-issue-3", state="CLOSED")
     result = bw("order")
-    assert "PR #12" in result.out
-    assert "#1 " not in result.out and "(closes #1)" not in result.out
-    assert "#3" not in result.out
+    assert "1. PR #12 (closes #2)" in result.out
+    for gone in ("(closes #1)", "issue-1-", "PR #11", "(closes #3)", "issue-3-", "PR #13"):
+        assert gone not in result.out
+
+
+def test_order_says_when_everything_is_already_merged(repo, github, bw):
+    merged_wave(repo, github, bw)
+    repo.merge_on_github("buildwork/issue-2-issue-2")
+    github.pull(12, "buildwork/issue-2-issue-2", state="MERGED")
+    result = bw("order")
+    assert result.code == 0
+    assert "Nothing left to merge" in result.out
+    assert "PR #" not in result.out
+
+
+def test_status_shows_a_closed_pull_request_as_done(repo, github, bw):
+    issues(github, 1, 2)
+    bw("plan", "--goal", "g", "--issues", "1,2", "--save")
+    repo.branch("buildwork/issue-1-issue-1", {"src/f1.py": "x\n"})
+    github.pull(11, "buildwork/issue-1-issue-1", state="CLOSED")
+    result = bw("status")
+    assert "Closed without merging" in result.out
+    assert "Stalled" not in result.out
 
 
 @bug(8)

@@ -62,7 +62,7 @@ change.
 that retries itself spends without bound.
 
 **7. Resume is reconstructed, never cached.** State comes from git branches,
-open pull requests and worktrees. The session record in `~/.dbhq/buildwork/`
+pull requests in every state and worktrees. The session record in `~/.dbhq/buildwork/`
 holds the goal, the wave and which issue was sent to change which hotspot, and
 nothing a query could answer. If you find
 yourself caching an agent id to make something faster, you have made it wrong

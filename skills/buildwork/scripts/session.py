@@ -18,6 +18,12 @@ second branch to touch the same file.
 Lives in ~/.dbhq/buildwork/, per the DBHQ convention that every skill keeps its
 state in ~/.dbhq/<skill>/ - never a new dotfile in $HOME, never in the working
 tree, where it would appear in every worktree at once.
+
+One record per GitHub repository, at ~/.dbhq/buildwork/<owner>/<repo>.json,
+keyed on the `owner/repo` gh resolves the clone to. Not on the folder name: an
+orchestrator in a linked worktree has a folder of its own and would find
+nothing, and two clones of different repositories can share a folder name and
+would share a record.
 """
 
 from __future__ import annotations
@@ -68,29 +74,30 @@ class Session:
         return f"{int(hours / 24)} days ago"
 
 
-def _slug(repo_root: Path) -> str:
-    return repo_root.name
+def _path(repo: str) -> Path:
+    """`owner/repo` as a path. GitHub treats both halves case-insensitively, and so does this."""
+    owner, _, name = repo.strip().lower().partition("/")
+    if not owner or not name or "/" in name or owner in (".", "..") or name in (".", ".."):
+        raise ValueError(f"not an owner/repo name: {repo!r}")
+    return STATE_DIR / owner / f"{name}.json"
 
 
-def _path(repo_root: Path) -> Path:
-    return STATE_DIR / f"{_slug(repo_root)}.json"
+def _ensure_dir(path: Path) -> None:
+    for directory in (STATE_DIR, path.parent):
+        directory.mkdir(parents=True, exist_ok=True)
+        os.chmod(directory, 0o700)
 
 
-def _ensure_dir() -> None:
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    os.chmod(STATE_DIR, 0o700)
-
-
-def save(repo_root: Path, session: Session) -> Path:
-    _ensure_dir()
-    path = _path(repo_root)
+def save(repo: str, session: Session) -> Path:
+    path = _path(repo)
+    _ensure_dir(path)
     path.write_text(json.dumps(asdict(session), indent=2) + "\n", encoding="utf-8")
     os.chmod(path, 0o600)
     return path
 
 
-def load(repo_root: Path) -> Session | None:
-    path = _path(repo_root)
+def load(repo: str) -> Session | None:
+    path = _path(repo)
     if not path.is_file():
         return None
     try:
@@ -103,5 +110,5 @@ def load(repo_root: Path) -> Session | None:
     return Session(**{k: v for k, v in data.items() if k in known})
 
 
-def clear(repo_root: Path) -> None:
-    _path(repo_root).unlink(missing_ok=True)
+def clear(repo: str) -> None:
+    _path(repo).unlink(missing_ok=True)

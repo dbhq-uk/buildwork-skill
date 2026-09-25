@@ -43,6 +43,15 @@ def issue_from_branch(branch: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def branches_for(number: int, all_branches: list[str]) -> list[str]:
+    """Every buildwork branch for this issue, matched on the number alone.
+
+    Never on the title. An issue retitled after dispatch keeps the branch it
+    was dispatched on, and rebuilding the name from the new title finds nothing.
+    """
+    return [branch for branch in all_branches if issue_from_branch(branch) == number]
+
+
 def pr_state(pr: dict) -> str:
     """OPEN, MERGED or CLOSED, as gh reports it. A record with no state is an open one."""
     return (pr.get("state") or "OPEN").upper()

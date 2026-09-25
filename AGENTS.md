@@ -70,7 +70,10 @@ pull requests in every state and worktrees, plus the runner's list of working
 agents when the orchestrator passes it to `status --live`. That list is read
 at the time of asking and never written down. The session record in `~/.dbhq/buildwork/`
 holds the goal, the wave and which issue was sent to change which hotspot, and
-nothing a query could answer. If you find
+nothing a query could answer. It is keyed on the `owner/repo` gh names, never
+on a folder, so every worktree of a repository finds the same one. A branch is
+found by its issue number, never by rebuilding its name from a title that may
+have changed. If you find
 yourself caching an agent id to make something faster, you have made it wrong
 after the next crash.
 

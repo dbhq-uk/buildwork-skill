@@ -10,7 +10,7 @@ import re
 import subprocess
 import sys
 
-from harness import BUILDWORK, FakeGitHub, Repo, bug, isolated_env
+from harness import BUILDWORK, FakeGitHub, Repo, isolated_env
 
 HOTSPOT = 'enabled = true\nrunner = "paseo"\nhotspots = ["public/_headers"]\n'
 
@@ -636,7 +636,7 @@ def test_init_suggests_the_files_changed_most_often(repo, github, bw):
     assert '"src/routes.ts"' in (repo.root / ".github/buildwork.toml").read_text(encoding="utf-8")
 
 
-# --- open bugs: each fails today, and its fix removes the marker ------------
+# --- the branch and the session are found by what does not change -----------
 
 def test_plan_reports_a_failing_gh_instead_of_nothing_to_run(repo, github, bw):
     issues(github, 1, 2)
@@ -1112,14 +1112,41 @@ def test_plan_will_not_take_issues_and_all_together(repo, github, bw):
     assert "not allowed with" in result.err
 
 
-@bug(16)
 def test_qc_finds_the_branch_after_the_issue_is_retitled(repo, github, bw):
     github.issue(1, "a better title", body="Change `src/a.py`.")
     repo.branch("buildwork/issue-1-the-original-title", {"src/a.py": "a\n"})
-    assert bw("qc", "1").code == 0
+    result = bw("qc", "1")
+    assert result.code == 0, result.text
+    assert "buildwork/issue-1-the-original-title" in result.out
 
 
-@bug(16)
+def test_qc_with_two_branches_for_an_issue_takes_the_one_named_from_its_title(repo, github, bw):
+    github.issue(1, "one", body="Change `src/a.py`.")
+    repo.branch("buildwork/issue-1-an-older-attempt", {"src/stray.py": "s\n"})
+    repo.branch("buildwork/issue-1-one", {"src/a.py": "a\n"})
+    result = bw("qc", "1")
+    assert result.code == 0, result.text
+    assert "(buildwork/issue-1-one)" in result.out
+
+
+def test_qc_with_two_branches_and_neither_from_the_title_asks_which(repo, github, bw):
+    github.issue(1, "renamed", body="Change `src/a.py`.")
+    repo.branch("buildwork/issue-1-first", {"src/a.py": "a\n"})
+    repo.branch("buildwork/issue-1-second", {"src/a.py": "b\n"})
+    result = bw("qc", "1")
+    assert result.code == 1
+    assert "2 buildwork branches" in result.err and "--branch" in result.err
+
+
+def test_qc_does_not_take_another_issues_branch(repo, github, bw):
+    """#1's number is a prefix of #12's. Matching is on the whole number."""
+    github.issue(1, "one", body="Change `src/a.py`.")
+    repo.branch("buildwork/issue-12-twelve", {"src/a.py": "a\n"})
+    result = bw("qc", "1")
+    assert result.code == 1
+    assert "No branch for #1" in result.err
+
+
 def test_status_from_a_linked_worktree_finds_the_session(repo, github, bw, tmp_path):
     issues(github, 1, 2)
     bw("plan", "--goal", "from the main checkout", "--issues", "1,2", "--save")
@@ -1128,7 +1155,18 @@ def test_status_from_a_linked_worktree_finds_the_session(repo, github, bw, tmp_p
     assert "Session: from the main checkout" in bw("status", cwd=linked).out
 
 
-@bug(16)
+def test_qc_from_a_linked_worktree_reads_the_hotspot_permission_saved_from_the_main_checkout(repo, github, bw, tmp_path):
+    repo.configure(HOTSPOT)
+    github.issue(1, "headers", body="Change `public/_headers`.")
+    github.issue(2, "other", body="Change `src/other.py`.")
+    bw("plan", "--goal", "g", "--issues", "1,2", "--save")
+    repo.branch("buildwork/issue-1-headers", {"public/_headers": "x\n"})
+    repo.git("branch", "orchestrator", "main")
+    linked = repo.worktree(tmp_path / "orchestrator-checkout", "orchestrator")
+    result = bw("qc", "1", cwd=linked)
+    assert result.code == 0, result.text
+
+
 def test_two_repositories_with_the_same_folder_name_keep_separate_sessions(repo, github, bw, tmp_path, home):
     other_gh = FakeGitHub(home=tmp_path / "gh-other", repo="owner/other")
     other = Repo(tmp_path / "elsewhere", isolated_env(home))

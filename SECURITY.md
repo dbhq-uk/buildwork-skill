@@ -17,18 +17,20 @@ merge order. The scripts do the deterministic half; the agent following
 
 **None are handled, stored, or read.** `gh auth` is the credential and `gh`
 holds it. There is no config file for a token, no environment variable, no
-keyring entry, and nothing in `~/.dbhq/buildwork/` but a session record holding
-a goal, a list of issue numbers, the hotspot paths each issue was sent to
-change, and a timestamp.
+keyring entry, and nothing in `~/.dbhq/buildwork/` but one session record per
+repository, at `~/.dbhq/buildwork/<owner>/<repo>.json`, holding a goal, a list
+of issue numbers, the hotspot paths each issue was sent to change, and a
+timestamp.
 
-That directory is created `700` and the record `600`, in line with the DBHQ
+Those directories are created `700` and the record `600`, in line with the DBHQ
 convention that a skill keeps its state in `~/.dbhq/<skill>/`.
 
 ### Network
 
 **Only through `gh`, and only reads.** Every call is `gh issue list`,
 `gh issue view`, `gh pr list` or `gh api ... /dependencies/blocked_by`, plus
-`gh auth status` and `gh repo view` from `doctor`. The
+`gh auth status` from `doctor`, and `gh repo view`, which names the repository
+a session record belongs to. The
 scripts never open a socket themselves and never send a request anywhere that
 is not GitHub via a CLI you already trust.
 

@@ -152,6 +152,23 @@ def test_brief_carries_the_issue_the_scope_and_the_digest(repo, github, bw):
         assert expected in result.out
 
 
+def test_a_redispatch_brief_tells_the_worker_to_build_on_the_earlier_commits(repo, github, bw):
+    github.issue(1, "Fix the parser", body="Change `src/parser.py`.")
+    repo.branch("buildwork/issue-1-fix-the-parser", {"src/parser.py": "half done\n"})
+    brief = bw("brief", "1", "--runner", "paseo").out
+    assert "An earlier worker started this issue" in brief
+    assert "1 commit(s) are already on `buildwork/issue-1-fix-the-parser`" in brief
+    assert "git log origin/main..HEAD" in brief
+
+
+def test_a_first_dispatch_brief_mentions_no_earlier_work(repo, github, bw):
+    github.issue(1, "Fix the parser", body="Change `src/parser.py`.")
+    assert "earlier worker" not in bw("brief", "1", "--runner", "paseo").out
+    # Paseo made the workspace first: the branch exists, and nothing is on it yet.
+    repo.branch("buildwork/issue-1-fix-the-parser", keep_worktree=True)
+    assert "earlier worker" not in bw("brief", "1", "--runner", "paseo").out
+
+
 def test_brief_names_the_one_permitted_hotspot(repo, github, bw):
     repo.configure(HOTSPOT)
     github.issue(1, "headers", body="Change `public/_headers`.")
@@ -513,6 +530,43 @@ def test_status_names_a_stalled_session_branch(repo, github, bw):
     assert result.out.index("Stalled") < result.out.index("Running")
 
 
+def test_status_shows_a_worktree_with_no_live_agent_as_stalled(repo, github, bw):
+    """A dead agent leaves its worktree behind. With the runner's list, that is a stall."""
+    issues(github, 1, 2)
+    bw("plan", "--goal", "g", "--issues", "1,2", "--save")
+    repo.branch("buildwork/issue-1-issue-1", {"src/f1.py": "x\n"}, keep_worktree=True)
+    repo.branch("buildwork/issue-2-issue-2", {"src/f2.py": "x\n"}, keep_worktree=True)
+    result = bw("status", "--live", "2")
+    assert result.code == 0, result.text
+    stalled, running = result.out.split("Running:")
+    assert "Stalled" in stalled and "#1  stalled" in stalled
+    assert "#2  running" in running and "#1" not in running
+
+
+def test_status_with_no_live_agents_shows_every_open_worktree_as_stalled(repo, github, bw):
+    issues(github, 1, 2)
+    bw("plan", "--goal", "g", "--issues", "1,2", "--save")
+    repo.branch("buildwork/issue-1-issue-1", {"src/f1.py": "x\n"}, keep_worktree=True)
+    result = bw("status", "--live", "none")
+    assert "#1  stalled" in result.out
+    assert "Running" not in result.out
+
+
+def test_status_without_the_agent_list_says_running_is_a_guess(repo, github, bw):
+    issues(github, 1, 2)
+    bw("plan", "--goal", "g", "--issues", "1,2", "--save")
+    repo.branch("buildwork/issue-1-issue-1", {"src/f1.py": "x\n"}, keep_worktree=True)
+    result = bw("status")
+    assert "#1  running" in result.out
+    assert "not that an agent is in it" in result.out and "--live" in result.out
+
+
+def test_status_refuses_a_live_list_that_is_not_issue_numbers(repo, github, bw):
+    result = bw("status", "--live", "agent-3")
+    assert result.code == 2
+    assert "--live none" in result.err
+
+
 # --- doctor -----------------------------------------------------------------
 
 def test_doctor_finds_no_drift_in_a_tidy_repository(repo, github, bw):
@@ -534,7 +588,27 @@ def test_doctor_names_a_stranded_branch(repo, github, bw):
     issues(github, 1, 2)
     bw("plan", "--goal", "g", "--issues", "1,2", "--save")
     repo.branch("buildwork/issue-1-issue-1", {"src/f1.py": "x\n"})
-    assert "#1 on buildwork/issue-1-issue-1 has no worktree and no pull request" in bw("doctor").out
+    assert "#1 on buildwork/issue-1-issue-1 has no worktree, and no pull request" in bw("doctor").out
+
+
+def test_doctor_gives_a_stranded_branch_a_next_step(repo, github, bw):
+    issues(github, 1, 2)
+    bw("plan", "--goal", "g", "--issues", "1,2", "--save")
+    repo.branch("buildwork/issue-1-issue-1", {"src/f1.py": "x\n"})
+    out = bw("doctor").out
+    assert "Next:" in out
+    assert "re-dispatch a worker onto buildwork/issue-1-issue-1" in out
+    assert "one rework" in out
+
+
+def test_doctor_names_a_worktree_with_no_live_agent(repo, github, bw):
+    issues(github, 1, 2)
+    bw("plan", "--goal", "g", "--issues", "1,2", "--save")
+    tree = repo.branch("buildwork/issue-1-issue-1", {"src/f1.py": "x\n"}, keep_worktree=True)
+    assert "stranded" not in bw("doctor").out
+    out = bw("doctor", "--live", "none").out
+    assert f"still has its worktree ({tree.name}) but no working agent" in out
+    assert "Next:" in out
 
 
 # --- init -------------------------------------------------------------------

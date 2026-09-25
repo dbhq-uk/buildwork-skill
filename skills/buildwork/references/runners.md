@@ -23,7 +23,7 @@ untestable part is small enough to read.
 |---|---|---|
 | `dispatch` | `create_workspace` then `create_agent` | the host's subagent tool, worktree isolation |
 | `list` | `list_agents`, then keep the agents whose `issue` label matches | `/tasks`, this session only; reconstruct instead |
-| `status` | the finish notification | the finish notification |
+| `status` | the finish, error and permission notifications | the subagent's result; permission prompts appear in your session |
 | `collect` | read the pull request | read the pull request |
 
 `collect` is identical because the result of a worker is a branch and a pull
@@ -90,6 +90,72 @@ its own, and polling burns tokens to learn nothing.
 For the one bounded rework, use `send_agent_prompt` against the same
 `agentId` with the specific failure. Once.
 
+### When a worker stalls
+
+`notifyOnFinish` covers three events, not one: the agent **finished**, it
+**errored**, or it **needs permission**. SKILL.md says what to do with each. A
+permission request is read with `list_pending_permissions` and answered with
+`respond_to_permission`, and only with the human's decision, unless the request
+is one the brief forbids, which you deny.
+
+An agent can also die without any of them, and its worktree stays behind. So
+`status` takes the runner's word for who is working:
+
+1. Call `list_agents` once, when the human asks or the watchdog fires. One
+   read at a time of asking is not polling.
+2. Keep the agents whose `labels` has an `issue`.
+3. Of those, the ones whose `status` is `initializing` or `running` are
+   working. `idle`, `error` and `closed` are not.
+4. Run `status --live 12,14` with their issue numbers, or `status --live none`.
+
+A worktree whose issue is not in the list is **stalled**, not running. Nothing
+is stored: the list is read when you ask and thrown away, so it is never stale.
+
+For a safety net against an agent that dies without a word, set one watchdog
+per wave before you go idle:
+
+```
+create_heartbeat(
+  name: "buildwork watchdog",
+  cron: "<minute> <hour> * * *",
+  timezone: "UTC",
+  maxRuns: 1,
+  prompt: "buildwork watchdog: call list_agents once and run buildwork.py status --live with the issues that have a working agent",
+)
+```
+
+Set `cron` to the time 45 minutes from now, in that zone: at 14:20 UTC, that is
+`"5 15 * * *"`. `maxRuns: 1` makes it fire once, so it is not polling. If the
+wave is in before it fires, remove it with `delete_heartbeat`.
+
+### Re-dispatch
+
+A stalled issue has a branch, often with commits on it. **Put the new worker on
+that branch.** Never cut a fresh one: that throws the work away and leaves two
+branches for one issue, and the join key stops being unique.
+
+Re-dispatch only when the old agent is gone - `closed`, or not listed at all.
+An agent that is still listed, idle or errored, gets one `send_agent_prompt` to
+carry on instead. Either way, it is that worker's one rework.
+
+If `status` still shows a worktree on the branch, the old workspace is still
+there. Find its `workspaceId` with `list_workspaces`, matching `cwd` to that
+worktree, and create the new agent in it. If the worktree is gone, check the
+branch out into a new one:
+
+```
+create_workspace(
+  isolation: "worktree",
+  mode: "checkout-branch",
+  branch: "buildwork/issue-143-metadata-register",
+)
+```
+
+Then `create_agent` exactly as for a first dispatch, with the brief from
+`brief 143 --runner paseo --branch <the branch status shows>`. `brief` sees
+the commits already on the branch and tells the worker to build on them rather
+than start again.
+
 ### Later waves
 
 **Run `plan` again before every wave after the first**, with the issues that
@@ -134,6 +200,16 @@ dispatch.
 - **You can message it** with `SendMessage`, which is how the one bounded
   rework is sent, **stop it** with `TaskStop`, and **list what is running**
   with `/tasks`.
+
+### A stalled subagent
+
+There is no re-dispatch onto a stalled branch under this runner. The host
+always makes a new branch for a worktree subagent, so a second worker cannot
+be put on the first one's work, and the brief's rename onto a name that
+exists fails at its first step. Hand the branch to the human with what
+`git log origin/<base>..<branch>` shows: they can finish it by hand,
+re-dispatch it under Paseo, or delete the branch so the next plan starts it
+fresh.
 
 ### What you still lose against Paseo
 

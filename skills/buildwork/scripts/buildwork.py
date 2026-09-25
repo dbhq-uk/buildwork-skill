@@ -326,11 +326,16 @@ def cmd_brief(args: argparse.Namespace) -> int:
     declared = waves_mod.declared_files(issue.get("body") or "", root)
     allowed = tuple(args.allow_hotspot or ())
     branch = args.branch or state.branch_for(args.issue, issue.get("title", ""))
+    cut_from = gh.remote_base(cfg.base)
+
+    # A re-dispatch puts a new worker on a branch an earlier one left commits
+    # on. Told nothing, it starts the issue again on top of them.
+    earlier = gh.commits_ahead(root, gh.base_ref(root, cfg.base), branch) if branch in gh.branches(root) else 0
 
     print(digest_mod.brief(
         issue=issue, base=cfg.base, branch=branch, digest_text=text,
-        declared=declared, allowed_hotspots=allowed, cut_from=gh.remote_base(cfg.base),
-        runner=_brief_runner(args, cfg, root),
+        declared=declared, allowed_hotspots=allowed, cut_from=cut_from,
+        runner=_brief_runner(args, cfg, root), earlier=earlier,
     ))
     return 0
 
@@ -571,9 +576,32 @@ def cmd_status(args: argparse.Namespace) -> int:
         all_branches=all_branches,
         worktrees=worktrees,
         pulls=pulls,
+        live=args.live,
     )
     print(state.summarise(items))
+    if args.live is None and any(item.status == state.RUNNING for item in items):
+        # A dead agent leaves its worktree behind. Without the runner's list,
+        # "running" is a guess, and a stall would read as running for ever.
+        print()
+        print(
+            "Running means a worktree is on the branch, not that an agent is in it. "
+            "Pass --live with the issues your runner lists an agent working on, or "
+            "--live none, and a worktree nobody is working in shows as stalled."
+        )
     return 0
+
+
+def _live(value: str) -> set[int]:
+    """`--live 12,14`: the issues the runner lists a working agent for. `none` is the empty set."""
+    text = value.strip().lower()
+    if text in ("", "none"):
+        return set()
+    try:
+        return {int(part.strip().lstrip("#")) for part in text.split(",") if part.strip()}
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"{value!r} is not a list of issue numbers. Use --live 12,14, or --live none."
+        ) from None
 
 
 # --- init -----------------------------------------------------------------
@@ -689,13 +717,20 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
     branches = gh.branches(root)
     worktrees = gh.worktrees(root)
-    items = state.reconstruct(sess.issues if sess else [], branches, worktrees, pulls)
+    items = state.reconstruct(sess.issues if sess else [], branches, worktrees, pulls, live=args.live)
 
     for item in items:
         if item.status == state.STALLED:
+            where = (
+                f"still has its worktree ({Path(item.worktree).name}) but no working agent"
+                if item.worktree else "has no worktree"
+            )
             problems.append(
-                f"#{item.issue} on {item.branch} has no worktree and no pull request. "
-                f"An agent started it and is gone; the work is stranded."
+                f"#{item.issue} on {item.branch} {where}, and no pull request. "
+                f"An agent started it and is gone; the work is stranded. "
+                f"Next: if its agent is still listed, send it one prompt to carry on; if not, "
+                f"re-dispatch a worker onto {item.branch} (references/runners.md, \"Re-dispatch\"). "
+                f"Either is its one rework. If nobody wants the work, the human deletes the branch."
             )
         if item.status == state.UNKNOWN_BRANCH:
             problems.append(
@@ -804,7 +839,11 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("order", help="the proposed merge order, with reasons")
     p.set_defaults(func=cmd_order)
 
+    live_help = ("the issues your runner lists an agent working on, as 12,14, or none. "
+                 "A worktree whose issue is not listed is stalled, not running")
+
     p = sub.add_parser("status", help="what is running, reconstructed from git and GitHub")
+    p.add_argument("--live", type=_live, help=live_help)
     p.set_defaults(func=cmd_status)
 
     p = sub.add_parser("init", help="write a starter config and suggest hotspots")
@@ -812,6 +851,7 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_init)
 
     p = sub.add_parser("doctor", help="report drift between the session, the branches and GitHub")
+    p.add_argument("--live", type=_live, help=live_help)
     p.set_defaults(func=cmd_doctor)
 
     args = parser.parse_args(argv)

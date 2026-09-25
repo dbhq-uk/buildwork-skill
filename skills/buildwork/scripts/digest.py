@@ -58,6 +58,7 @@ def brief(
     allowed_hotspots: tuple[str, ...] = (),
     cut_from: str | None = None,
     runner: str = "paseo",
+    earlier: int = 0,
 ) -> str:
     """The whole of what a worker is told. It has no context but this.
 
@@ -68,6 +69,12 @@ def brief(
     and picks its base, so the brief opens by putting both right. Without it
     the worker commits to a branch no later command can find, cut from a base
     the config never named.
+
+    `earlier` is the number of commits already on the branch. It is not zero
+    only on a re-dispatch, and then the worker is told to build on them. A
+    subagent is never told: its host always makes a new branch, the rename
+    onto a name that exists fails, and the worker stops at its first step,
+    which is right.
     """
     cut_from = cut_from or base
     first = _subagent_start(branch, cut_from) if runner == "subagent" else ""
@@ -76,6 +83,13 @@ def brief(
         if runner == "subagent" else
         f"- Your branch is `{branch}`, already checked out, cut from `{cut_from}`."
     )
+    if earlier and runner != "subagent":
+        where += (
+            f"\n- An earlier worker started this issue and stopped before it opened a pull\n"
+            f"  request. Its {earlier} commit(s) are already on `{branch}`. Read them with\n"
+            f"  `git log {cut_from}..HEAD` before you change anything, keep what is right,\n"
+            f"  and finish the issue from there. Do not start again."
+        )
     scope = (
         "\n".join(f"- `{p}`" for p in declared)
         if declared else

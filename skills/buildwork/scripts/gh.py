@@ -124,6 +124,12 @@ def behind_remote(cwd: Path, base: str) -> int | None:
     return int(out.strip()) if out.strip().isdigit() else None
 
 
+def commits_ahead(cwd: Path, base: str, branch: str) -> int:
+    """Commits on `branch` that `base` does not have."""
+    out = _run(["git", "rev-list", "--count", f"{base}..{branch}"], cwd=cwd)
+    return int(out.strip() or 0)
+
+
 def changed_files(cwd: Path, base: str, branch: str) -> list[str]:
     """Files the branch changes relative to the merge base with `base`.
 

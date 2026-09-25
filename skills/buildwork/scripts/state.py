@@ -20,9 +20,9 @@ BRANCH_PREFIX = "buildwork/issue-"
 BRANCH_RE = re.compile(rf"^{re.escape(BRANCH_PREFIX)}(\d+)(?:-(.*))?$")
 
 # Every state a piece of work can be in, and what the human does about it.
-RUNNING = "running"          # branch exists, no PR, a worktree is checked out on it
+RUNNING = "running"          # no PR, and an agent is working: listed live, or a worktree when no list was given
 NO_BRANCH = "not started"    # issue is in the wave, nothing exists yet
-STALLED = "stalled"          # branch exists, no worktree, no PR - the agent is gone
+STALLED = "stalled"          # branch exists, no PR, and nothing is working on it - the agent is gone
 READY = "ready"              # PR open, waiting on QC or on you
 UNKNOWN_BRANCH = "orphan"    # a buildwork branch for an issue not in this session
 MERGED = "merged"            # PR merged - done, the local branch is left over
@@ -62,9 +62,18 @@ def pulls_by_branch(pulls: list[dict]) -> dict[str, dict]:
     return best
 
 
-def _status(pr: dict | None, worktree: str | None) -> str:
+def _status(pr: dict | None, worktree: str | None, alive: bool | None = None) -> str:
+    """What a branch is doing. `alive` is None when nobody asked the runner.
+
+    A worktree is only a proxy for an agent. A dead agent leaves its worktree
+    behind, so without the runner's list it reads as running for ever. When
+    the list is given it wins: a live agent is running wherever it is, and a
+    worktree with no live agent in it is stalled.
+    """
     if pr:
         return {"MERGED": MERGED, "CLOSED": CLOSED}.get(pr_state(pr), READY)
+    if alive is not None:
+        return RUNNING if alive else STALLED
     return RUNNING if worktree else STALLED
 
 
@@ -93,11 +102,16 @@ def reconstruct(
     all_branches: list[str],
     worktrees: list[dict],
     pulls: list[dict],
+    live: set[int] | None = None,
 ) -> list[Item]:
     """Join the session's issues against what actually exists on disk and on GitHub.
 
     `pulls` is pull requests in every state. A merged or closed one means the
     work is finished, whatever is left on disk.
+
+    `live` is the issues the runner lists a working agent for, read by the
+    orchestrator at the time of asking and never stored. None means it was not
+    given, and a worktree stands in for an agent.
     """
     by_branch_wt = {wt.get("branch"): wt.get("path") for wt in worktrees if wt.get("branch")}
     by_branch_pr = pulls_by_branch(pulls)
@@ -116,8 +130,9 @@ def reconstruct(
             continue
         pr = by_branch_pr.get(branch)
         worktree = by_branch_wt.get(branch)
+        alive = None if live is None else number in live
         items.append(Item(
-            issue=number, status=_status(pr, worktree), branch=branch, worktree=worktree,
+            issue=number, status=_status(pr, worktree, alive), branch=branch, worktree=worktree,
             pr=pr.get("number") if pr else None,
             pr_url=pr.get("url") if pr else None,
         ))
@@ -152,7 +167,7 @@ def summarise(items: list[Item]) -> str:
     order = [READY, STALLED, RUNNING, UNKNOWN_BRANCH, NO_BRANCH, MERGED, CLOSED]
     headings = {
         READY: "Waiting on you",
-        STALLED: "Stalled - branch exists, no agent, no pull request",
+        STALLED: "Stalled - no agent working on it, no pull request",
         RUNNING: "Running",
         UNKNOWN_BRANCH: "Orphaned - a buildwork branch outside this session",
         NO_BRANCH: "Not started",

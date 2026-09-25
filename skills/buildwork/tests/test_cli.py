@@ -723,13 +723,70 @@ def test_the_brief_names_the_remote_base_it_was_cut_from(repo, github, bw):
     assert "cut from `origin/main`" in bw("brief", "1").out
 
 
-@bug(10)
 def test_an_open_blocker_outside_the_selection_holds_the_issue(repo, github, bw):
     issues(github, 4, 5, 6, 9)
     github.block(4, 9)
     payload = bw("plan", "--issues", "4,5,6", "--json").json()
     assert 4 not in [n for wave in wave_numbers(payload) for n in wave]
     assert any("#9" in w for w in payload["warnings"])
+
+
+def test_a_held_issue_holds_what_it_blocks(repo, github, bw):
+    issues(github, 4, 5, 6, 7, 9)
+    github.block(4, 9)
+    github.block(5, 4)
+    payload = bw("plan", "--issues", "4,5,6,7", "--json").json()
+    assert wave_numbers(payload) == [[6, 7]]
+    assert "#4 is held: it is blocked by #9, which is open and not in this session." in payload["warnings"]
+    assert "#5 is held: it is blocked by #4, which is held too." in payload["warnings"]
+
+
+def test_a_closed_blocker_outside_the_selection_holds_nothing(repo, github, bw):
+    issues(github, 4, 5)
+    github.issue(9, "done", state="CLOSED")
+    github.block(4, 9)
+    payload = bw("plan", "--issues", "4,5", "--json").json()
+    assert wave_numbers(payload) == [[4, 5]]
+    assert not any("held" in w for w in payload["warnings"])
+
+
+def test_a_blocker_that_cannot_be_read_is_treated_as_open(repo, github, bw):
+    issues(github, 4, 5, 6)
+    github.block(4, 99)
+    payload = bw("plan", "--issues", "4,5,6", "--json").json()
+    assert wave_numbers(payload) == [[5, 6]]
+    assert any("#99" in w and "treated as open" in w for w in payload["warnings"])
+
+
+def test_every_issue_held_is_nothing_to_run_and_says_why(repo, github, bw):
+    issues(github, 4, 5, 9)
+    github.block(4, 9)
+    github.block(5, 9)
+    result = bw("plan", "--issues", "4,5")
+    assert "DO NOT FAN OUT" in result.out
+    assert "waiting on an open blocker" in result.out
+    assert "#4 is held" in result.out and "#5 is held" in result.out
+
+
+def test_a_hold_label_keeps_an_issue_out_whatever_asked_for_it(repo, github, bw):
+    repo.configure('enabled = true\nrunner = "paseo"\nhold_labels = ["blocked", "on hold"]\n')
+    github.issue(1, "one", body="Change `src/f1.py`.", labels=["blocked"])
+    issues(github, 2, 3)
+    payload = bw("plan", "--issues", "1,2,3", "--json").json()
+    assert wave_numbers(payload) == [[2, 3]]
+    assert "#1 is held: it has the `blocked` label." in payload["warnings"]
+
+
+def test_plan_holds_an_issue_the_roadmap_lists_under_next_and_triage(repo, github, bw):
+    repo.on_main("roadmap", {"roadmap.md": (
+        "## Next\n\n1. **#1** One\n   Why: first.\n2. **#2** Two\n   Why: second.\n"
+        "3. **#3** Three\n   Why: third.\n\n## Later\n\nReady, and not ordered this time.\n\n- **#4** Four\n\n"
+        "## Triage\n\nFiled by an agent and not yet reviewed. Listed, never ordered.\n\n- **#3** Three\n"
+    )})
+    issues(github, 1, 2, 3, 4)
+    payload = bw("plan", "--json").json()
+    assert wave_numbers(payload) == [[1, 2]]
+    assert "#3 is listed under Next and under Triage. A held listing wins, so it is held." in payload["warnings"]
 
 
 @bug(11)

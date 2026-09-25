@@ -50,6 +50,14 @@ otherwise it refuses rather than guessing.
 Path to the ordered queue, relative to the repository root. Default
 `roadmap.md`. It is read, never written - `deskwork` renders it.
 
+Only the entries under a runnable heading (`## Next`) are planned. `## Blocked`,
+`## Later`, `## Triage`, `## Cycles` and any heading the parser does not know
+are held. An entry is a list item whose first issue reference is the issue, as
+in `1. **#12** Title`; the indented `Why:` line under it is prose. **If one
+issue is listed under Next and under a held heading, it is held**, whichever
+comes first, and `plan` says so in a `!` warning. `## Bottlenecks` only
+describes issues listed elsewhere, so a mention there holds nothing.
+
 No roadmap is not an error. The plan falls back to every open issue in no
 particular order and **says so**, because presenting arbitrary order as a plan
 is worse than having no plan.
@@ -107,6 +115,16 @@ workers silently is worse than saying so.
 
 A digest file that does not exist is reported by `doctor`, because its absence
 is invisible at dispatch and shows up as five workers ignoring a convention.
+
+### `hold_labels`
+
+Optional. A list of label names, such as `["blocked"]`. An open issue with any
+of them is never dispatched, whether it came from the roadmap or from
+`--issues`, and `plan` names it in a `!` warning. It is the one hold a human
+can put on an issue from GitHub without editing the roadmap.
+
+`plan` also holds, without any setting, an issue whose blocker is open and not
+in the selection, and an issue blocked by one that is held.
 
 ### `wave.max`
 

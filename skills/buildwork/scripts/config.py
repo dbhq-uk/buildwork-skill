@@ -39,6 +39,7 @@ class Config:
     hotspots: tuple[str, ...] = ()
     digest: tuple[str, ...] = ()
     wave_max: int = 4
+    hold_labels: tuple[str, ...] = ()
 
     @property
     def roadmap_path(self) -> Path:
@@ -119,6 +120,7 @@ def load(root: Path) -> Config:
         hotspots=_str_list(data.get("hotspots"), "hotspots"),
         digest=_str_list(data.get("digest"), "digest"),
         wave_max=wave_max,
+        hold_labels=_str_list(data.get("hold_labels"), "hold_labels"),
     )
 
 
@@ -151,6 +153,10 @@ hotspots = [
 # five agents do not each re-read the same conventions.
 digest = [
 {digest}]
+
+# An issue with any of these labels is never dispatched, whatever the roadmap
+# or --issues says.
+# hold_labels = ["blocked"]
 
 [wave]
 max = {cap}

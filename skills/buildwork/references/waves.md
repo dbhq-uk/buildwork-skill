@@ -54,11 +54,14 @@ client that calls it. That needs sequencing, not isolation, which is what
 
 ## How a wave is packed
 
-1. Take everything with no unmet blocker inside this set. A blocker that is
-   closed, or outside the session goal, does not hold anything back.
-2. Walk them in roadmap order, adding each to the wave unless it claims a file
+1. Hold back anything that cannot start this session: an issue whose blocker
+   is open and outside this set, since nothing here will close it, and an
+   issue whose blocker is itself held. Each one gets a `!` warning naming the
+   blocker. A closed blocker holds nothing.
+2. Take everything with no unmet blocker inside this set.
+3. Walk them in roadmap order, adding each to the wave unless it claims a file
    already claimed in that wave.
-3. Stop at the cap.
+4. Stop at the cap.
 
 **A claim is any declared file, plus any hotspot those files hit.** Two
 branches editing one file conflict whether or not somebody listed it as a

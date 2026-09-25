@@ -138,10 +138,34 @@ def test_fully_chained_set_degrades_to_sequential_and_says_so():
     assert any("no parallelism" in a for a in plan.assumptions)
 
 
-def test_edge_to_an_issue_outside_the_set_is_ignored():
-    """A blocker that is closed, or outside the session goal, does not hold a wave."""
+def test_edge_to_a_closed_issue_outside_the_set_is_ignored():
+    """A blocker outside the set that is not open is closed. It holds nothing."""
     plan = waves.plan(cands([issue(1, "`a.py`"), issue(2, "`b.py`")]), {2: [99]}, cap=4)
     assert plan.waves == [[1, 2]]
+    assert plan.held == {}
+
+
+def test_an_open_blocker_outside_the_set_holds_its_issue():
+    """Nothing in this session will close #99, so #2 cannot start in it."""
+    items = [issue(1, "`a.py`"), issue(2, "`b.py`"), issue(3, "`c.py`")]
+    plan = waves.plan(cands(items), {2: [99]}, cap=4, open_outside={99})
+    assert plan.waves == [[1, 3]]
+    assert plan.held == {2: [99]}
+    assert "#2 is held: it is blocked by #99, which is open and not in this session." in plan.warnings
+
+
+def test_holding_is_transitive():
+    items = [issue(n, f"`{n}.py`") for n in (1, 2, 3, 4)]
+    plan = waves.plan(cands(items), {2: [99], 3: [2]}, cap=4, open_outside={99})
+    assert plan.waves == [[1, 4]]
+    assert plan.held == {2: [99], 3: [2]}
+
+
+def test_holding_can_leave_one_issue_and_that_refuses():
+    items = [issue(1, "`a.py`"), issue(2, "`b.py`")]
+    plan = waves.plan(cands(items), {2: [99]}, cap=4, open_outside={99})
+    assert plan.refusal and "One issue (#1)" in plan.refusal
+    assert plan.held == {2: [99]}
 
 
 def test_roadmap_order_is_preserved_within_a_wave():

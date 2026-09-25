@@ -44,6 +44,9 @@ class Plan:
     warnings: list[str] = field(default_factory=list)
     cycles: list[list[int]] = field(default_factory=list)
     assumptions: list[str] = field(default_factory=list)
+    # Issue number to what it waits on: an open blocker outside this session,
+    # or an issue that is itself held.
+    held: dict[int, list[int]] = field(default_factory=dict)
 
     @property
     def dispatched(self) -> list[int]:
@@ -129,25 +132,71 @@ def _find_cycles(graph: dict[int, list[int]], nodes: set[int]) -> list[list[int]
     return cycles
 
 
+def hold_blocked(
+    candidates: list[Candidate],
+    graph: dict[int, list[int]],
+    open_outside: set[int] | frozenset[int],
+) -> dict[int, list[int]]:
+    """Every candidate that cannot start this session, and what it waits on.
+
+    A candidate is held when a blocker is open and outside the selection, so
+    nothing this session will close it. It is held too when a blocker is
+    itself held, because that blocker is not going to run either. A closed
+    blocker holds nothing.
+    """
+    held: dict[int, list[int]] = {}
+    changed = True
+    while changed:
+        changed = False
+        for cand in candidates:
+            if cand.number in held:
+                continue
+            waits = [d for d in graph.get(cand.number, []) if d in open_outside or d in held]
+            if waits:
+                held[cand.number] = waits
+                changed = True
+    return held
+
+
 def plan(
     candidates: list[Candidate],
     graph: dict[int, list[int]],
     cap: int,
     graph_is_known: bool = True,
+    open_outside: set[int] | frozenset[int] = frozenset(),
 ) -> Plan:
     """Group candidates into waves, or refuse.
 
-    `graph` maps an issue number to the issue numbers blocking it. Edges to
-    issues outside `candidates` are ignored: a blocker that is already closed,
-    or that is not in this session's goal, does not constrain this wave.
+    `graph` maps an issue number to the issue numbers blocking it.
+    `open_outside` is the blockers outside `candidates` that are still open.
+    An issue waiting on one of those is held back with a warning, not
+    dispatched: nothing in this session will close its blocker. Any other
+    edge to an issue outside `candidates` is a closed blocker and constrains
+    nothing.
     """
     result = Plan()
+    result.held = hold_blocked(candidates, graph, open_outside)
+    for number, waits in result.held.items():
+        reasons = [
+            f"#{d}, which is open and not in this session" if d in open_outside
+            else f"#{d}, which is held too"
+            for d in waits
+        ]
+        result.warnings.append(f"#{number} is held: it is blocked by {', '.join(reasons)}.")
+    if result.held:
+        candidates = [c for c in candidates if c.number not in result.held]
+        graph = {n: deps for n, deps in graph.items() if n not in result.held}
+
     nodes = {c.number for c in candidates}
     by_number = {c.number: c for c in candidates}
     order = [c.number for c in candidates]  # roadmap order, preserved throughout
 
     if not candidates:
-        result.refusal = "Nothing to run: no open issues matched the session goal."
+        result.refusal = (
+            "Nothing to run: every selected issue is waiting on an open blocker outside this session."
+            if result.held else
+            "Nothing to run: no open issues matched the session goal."
+        )
         return result
 
     if len(candidates) == 1:

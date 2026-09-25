@@ -73,6 +73,28 @@ def test_a_missing_issue_raises_with_gh_own_message(repo, gh_env):
         gh.issue(repo.root, 404)
 
 
+def test_issue_authors_names_each_author_and_how_github_relates_them(repo, gh_env):
+    gh_env.issue(1, author="alice", association="MEMBER")
+    gh_env.issue(2, author="stranger", association="NONE")
+    assert gh.issue_authors(repo.root, [2, 1]) == {
+        1: {"login": "alice", "association": "MEMBER"},
+        2: {"login": "stranger", "association": "NONE"},
+    }
+
+
+def test_issue_authors_asks_a_hundred_at_a_time(repo, gh_env):
+    for n in range(1, 151):
+        gh_env.issue(n)
+    assert sorted(gh.issue_authors(repo.root, list(range(1, 151)))) == list(range(1, 151))
+    assert len([c for c in gh_env.calls() if c[:2] == ["api", "graphql"]]) == 2
+
+
+def test_issue_authors_raises_with_gh_own_message(repo, gh_env):
+    gh_env.issue(1)
+    with pytest.raises(gh.GhError, match="Could not resolve to an Issue with the number of 404"):
+        gh.issue_authors(repo.root, [1, 404])
+
+
 def test_pulls_returns_every_state_with_its_state(repo, gh_env):
     gh_env.pull(10, "buildwork/issue-1-a")
     gh_env.pull(11, "buildwork/issue-2-b", state="MERGED")

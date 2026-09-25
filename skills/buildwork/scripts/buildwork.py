@@ -130,6 +130,8 @@ def cmd_plan(args: argparse.Namespace) -> int:
                 keep.append(issue)
         selected = keep
 
+    authors, outside = _authors(root, selected)
+
     graph: dict[int, list[int]] = {}
     foreign: dict[int, list[str]] = {}
     known: dict[int, str] = {}
@@ -158,7 +160,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         candidates, graph, cap=cap, graph_is_known=graph_known,
         open_outside=open_outside, foreign=foreign,
     )
-    plan.warnings[:0] = [*board.warnings, *label_held, *unread]
+    plan.warnings[:0] = [*board.warnings, *label_held, *outside, *unread]
     source_warnings, source_assumptions = _dependency_sources(answered, problems)
     plan.warnings.extend(source_warnings)
     plan.assumptions[:0] = source_assumptions
@@ -186,6 +188,8 @@ def cmd_plan(args: argparse.Namespace) -> int:
                     "title": by_number[n].get("title", ""),
                     "branch": state.branch_for(n, by_number[n].get("title", "")),
                     "hotspots": list(next(c.hotspots for c in candidates if c.number == n)),
+                    "author": authors.get(n, {}).get("login"),
+                    "association": authors.get(n, {}).get("association"),
                 }
                 for n in wave
             ]
@@ -213,6 +217,43 @@ def cmd_plan(args: argparse.Namespace) -> int:
 
     print(_render_plan(payload))
     return 0
+
+
+def _authors(root: Path, selected: list[dict]) -> tuple[dict[int, dict], list[str]]:
+    """Who opened each selected issue, and a warning for each one from outside the repository.
+
+    An issue body goes into its worker's brief word for word, so whoever can
+    open an issue can write an agent's instructions. On a public repository
+    that is anyone. An owner, member or collaborator already has a say in
+    the repository; anyone else gets a `!` line, so a human reads the issue
+    before approving the plan. When GitHub cannot say, that is a warning too:
+    an unchecked author is not a trusted one.
+    """
+    numbers = [int(issue["number"]) for issue in selected]
+    if not numbers:
+        return {}, []
+    try:
+        authors = gh.issue_authors(root, numbers)
+    except gh.GhError as exc:
+        return {}, [
+            f"Could not read who opened {_numbers(numbers)}, so none was checked for an author from "
+            f"outside this repository. Read each issue before you approve. {exc}"
+        ]
+    warnings = []
+    for number in numbers:
+        who = authors.get(number)
+        if who is None:
+            warnings.append(f"#{number}: GitHub did not say who opened it. Read it before you approve.")
+            continue
+        if who["association"] in gh.TRUSTED_ASSOCIATIONS:
+            continue
+        name = f"@{who['login']}" if who["login"] else "a deleted account"
+        warnings.append(
+            f"#{number} was opened by {name}, who is not an owner, member or collaborator here "
+            f"(GitHub says {who['association'] or 'nothing'}). Its body goes into a worker's brief "
+            f"word for word: read it before you approve."
+        )
+    return authors, warnings
 
 
 def _label_names(issue: dict) -> set[str]:
@@ -288,6 +329,14 @@ def _open_blockers(
     return still_open, unread
 
 
+def _by(item: dict) -> str:
+    """`  (by @alice, member)`: who opened the issue, as GitHub relates them to this repository."""
+    if not item.get("association"):
+        return ""
+    who = f"@{item['author']}" if item.get("author") else "a deleted account"
+    return f"  (by {who}, {item['association'].lower().replace('_', ' ')})"
+
+
 def _render_plan(p: dict) -> str:
     lines = []
     if p["goal"]:
@@ -305,7 +354,7 @@ def _render_plan(p: dict) -> str:
         lines.append(label + ":")
         for item in wave:
             spots = f"  [hotspot: {', '.join(item['hotspots'])}]" if item["hotspots"] else ""
-            lines.append(f"  #{item['issue']}  {item['title']}{spots}")
+            lines.append(f"  #{item['issue']}  {item['title']}{_by(item)}{spots}")
             lines.append(f"      {item['branch']}")
         lines.append("")
 

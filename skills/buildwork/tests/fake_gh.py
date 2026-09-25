@@ -16,6 +16,8 @@ suite:
 - `gh pr list --state closed` includes merged pull requests
 - an unknown `--json` field is an error, not an empty value
 - `blockedBy` is `{"nodes": [...], "totalCount": N}`, first 50 only
+- `gh api graphql` fills `{owner}` and `{repo}` in `-F` values, and an issue
+  that does not exist prints the body with `errors` and exits 1
 
 A command this fake does not model exits 1 with "fake gh: unsupported". That
 is deliberate: a fix that starts calling something new has to teach the fake
@@ -29,6 +31,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from urllib.parse import parse_qs, urlsplit
 
@@ -255,7 +258,55 @@ def cmd_pr(state: dict, args: list[str]) -> None:
     print(json.dumps([project(p, fields, PR_FIELDS) for p in found[:limit]]))
 
 
+# `i12: issue(number: 12) { ... }`, as gh.issue_authors asks for them.
+ISSUE_ALIAS = re.compile(r"(\w+): issue\(number: (\d+)\) \{ number authorAssociation author \{ login \} \}")
+
+
+def cmd_graphql(state: dict, args: list[str]) -> None:
+    owner, name = state["repo"].split("/")
+    fields: dict[str, str] = {}
+    while args:
+        flag = args.pop(0)
+        if flag in ("-F", "-f", "--field", "--raw-field") and args:
+            key, _, value = args.pop(0).partition("=")
+            if flag in ("-F", "--field"):
+                value = value.replace("{owner}", owner).replace("{repo}", name)
+            fields[key] = value
+        else:
+            die(f"fake gh: unsupported: api graphql {flag}")
+    query = fields.get("query", "")
+    aliases = ISSUE_ALIAS.findall(query)
+    if not aliases or f"{fields.get('owner')}/{fields.get('name')}" != state["repo"]:
+        die(f"fake gh: unsupported: api graphql {query[:60]}")
+
+    issues = state.get("issues", {})
+    repository, errors = {}, []
+    for alias, number in aliases:
+        raw = issues.get(number)
+        if raw is None:
+            repository[alias] = None
+            errors.append({
+                "type": "NOT_FOUND", "path": ["repository", alias],
+                "message": f"Could not resolve to an Issue with the number of {number}.",
+            })
+            continue
+        author = raw.get("author", "maintainer")
+        repository[alias] = {
+            "number": int(number),
+            "authorAssociation": raw.get("association", "OWNER"),
+            "author": {"login": author} if author else None,
+        }
+    body = {"data": {"repository": repository}}
+    if errors:
+        body["errors"] = errors
+        die(f"gh: {errors[0]['message']}", stdout=json.dumps(body))
+    print(json.dumps(body))
+
+
 def cmd_api(state: dict, args: list[str]) -> None:
+    if args[:1] == ["graphql"]:
+        cmd_graphql(state, args[1:])
+        return
     paginate = pop_switch(args, "--paginate")
     slurp = pop_switch(args, "--slurp")
     if slurp and not paginate:

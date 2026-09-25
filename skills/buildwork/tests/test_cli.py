@@ -119,6 +119,40 @@ def test_plan_holds_a_second_hotspot_change_back_a_wave(repo, github, bw):
     assert payload["waves"][0][0]["hotspots"] == ["public/_headers"]
 
 
+def test_plan_warns_on_an_issue_from_outside_the_repository(repo, github, bw):
+    """Its body becomes a worker's instructions. On a public repository anyone can write one."""
+    github.issue(1, "ours", body="Change `src/a.py`.", author="alice", association="OWNER")
+    github.issue(2, "theirs", body="Change `src/b.py`.", author="stranger", association="NONE")
+    out = bw("plan", "--issues", "1,2").out
+    assert "#1  ours  (by @alice, owner)" in out
+    assert "#2  theirs  (by @stranger, none)" in out
+    warnings = [line for line in out.splitlines() if line.startswith("! ")]
+    assert warnings == [
+        "! #2 was opened by @stranger, who is not an owner, member or collaborator here "
+        "(GitHub says NONE). Its body goes into a worker's brief word for word: read it before you approve."
+    ]
+
+
+def test_plan_trusts_owners_members_and_collaborators_and_no_one_else(repo, github, bw):
+    kinds = ["OWNER", "MEMBER", "COLLABORATOR", "CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "NONE"]
+    for n, kind in enumerate(kinds, 1):
+        github.issue(n, f"issue {n}", body=f"Change `src/f{n}.py`.", author=f"user{n}", association=kind)
+    payload = bw("plan", "--issues", ",".join(str(n) for n in range(1, len(kinds) + 1)), "--json").json()
+    warned = sorted(int(w.split()[0][1:]) for w in payload["warnings"] if "not an owner, member or collaborator" in w)
+    assert warned == [4, 5, 6, 7]
+    item = next(i for wave in payload["waves"] for i in wave if i["issue"] == 7)
+    assert (item["author"], item["association"]) == ("user7", "NONE")
+
+
+def test_plan_says_when_it_could_not_check_who_opened_the_issues(repo, github, bw):
+    issues(github, 1, 2)
+    github.fail("api", "graphql", stderr="gh: API rate limit exceeded")
+    result = bw("plan", "--issues", "1,2")
+    assert result.code == 0, result.text
+    assert "Could not read who opened #1, #2, so none was checked" in result.out
+    assert "rate limit" in result.out
+
+
 def test_plan_names_roadmap_entries_that_are_not_open(repo, github, bw):
     issues(github, 1, 2)
     payload = bw("plan", "--issues", "1,2,99", "--json").json()
@@ -1005,7 +1039,7 @@ def test_plan_says_the_blocked_by_field_answered(repo, github, bw):
     payload = bw("plan", "--issues", "1,2", "--json").json()
     assert wave_numbers(payload) == [[1], [2]]
     assert "Dependency links were read from GitHub, through gh's `blockedBy` field." in payload["assumptions"]
-    dependency_calls = [c for c in github.calls() if c[:1] == ["api"]]
+    dependency_calls = [c for c in github.calls() if c[:1] == ["api"] and c[1:2] != ["graphql"]]
     assert dependency_calls == [], "one issue list call carries the graph"
 
 

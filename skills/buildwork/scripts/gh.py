@@ -221,6 +221,48 @@ def issue(cwd: Path, number: int) -> dict:
     )
 
 
+# The author associations GitHub gives people who already have a say in the
+# repository. Everyone else - CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR, FIRST_TIMER,
+# MANNEQUIN, NONE - can open an issue and so write a worker's instructions.
+TRUSTED_ASSOCIATIONS = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
+
+# Issues per GraphQL request. Well inside GitHub's limits on a query.
+AUTHOR_BATCH = 100
+
+
+def issue_authors(cwd: Path, numbers: list[int]) -> dict[int, dict]:
+    """Who opened each issue, and how GitHub relates them to this repository.
+
+    `{number: {"login": ..., "association": ...}}`. `gh issue list` has no
+    author association, and the REST list returns every open issue with its
+    body to answer for a few, so this asks GraphQL for exactly these issues,
+    a hundred to a request. Raises GhError, with gh's message, when it fails.
+    """
+    wanted = sorted({int(n) for n in numbers})
+    found: dict[int, dict] = {}
+    for start in range(0, len(wanted), AUTHOR_BATCH):
+        fields = " ".join(
+            f"i{n}: issue(number: {n}) {{ number authorAssociation author {{ login }} }}"
+            for n in wanted[start:start + AUTHOR_BATCH]
+        )
+        query = (
+            "query($owner: String!, $name: String!) { "
+            f"repository(owner: $owner, name: $name) {{ {fields} }} }}"
+        )
+        data = _json(
+            ["gh", "api", "graphql", "-F", "owner={owner}", "-F", "name={repo}", "-f", f"query={query}"],
+            cwd=cwd,
+        )
+        repository = ((data or {}).get("data") or {}).get("repository") or {}
+        for node in repository.values():
+            if isinstance(node, dict) and "number" in node:
+                found[int(node["number"])] = {
+                    "login": (node.get("author") or {}).get("login") or "",
+                    "association": (node.get("authorAssociation") or "").upper(),
+                }
+    return found
+
+
 def pulls(cwd: Path, limit: int = 200) -> list[dict]:
     """Recent pull requests in every state, newest first. Raises GhError when gh fails.
 

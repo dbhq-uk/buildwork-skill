@@ -75,10 +75,12 @@ class FakeGitHub:
         self.save()
 
     def issue(self, number: int, title: str = "", body: str = "", labels=(),
-              state: str = "OPEN", author: str = "maintainer", blocked_by=()) -> dict:
+              state: str = "OPEN", author: str = "maintainer", association: str = "OWNER",
+              blocked_by=()) -> dict:
+        """An issue. `association` is GitHub's authorAssociation for its author: OWNER, MEMBER, NONE..."""
         raw = {
             "number": number, "title": title or f"issue {number}", "body": body,
-            "labels": list(labels), "state": state, "author": author,
+            "labels": list(labels), "state": state, "author": author, "association": association,
         }
         self.issues[str(number)] = raw
         if blocked_by:

@@ -47,6 +47,33 @@ def test_worktree_and_no_pull_request_means_running():
     assert items[0].worktree == "/tmp/wt"
 
 
+def test_worktree_with_no_live_agent_is_stalled():
+    """A dead agent leaves its worktree behind. Once the runner has said who is live, that is a stall."""
+    items = state.reconstruct(
+        wave_issues=[1, 2],
+        all_branches=["buildwork/issue-1-a", "buildwork/issue-2-b"],
+        worktrees=[
+            {"branch": "buildwork/issue-1-a", "path": "/tmp/wt1"},
+            {"branch": "buildwork/issue-2-b", "path": "/tmp/wt2"},
+        ],
+        pulls=[],
+        live={2},
+    )
+    assert [item.status for item in items] == [state.STALLED, state.RUNNING]
+    assert items[0].worktree == "/tmp/wt1"
+
+
+def test_the_live_list_never_overrides_a_pull_request():
+    items = state.reconstruct(
+        wave_issues=[1],
+        all_branches=["buildwork/issue-1-a"],
+        worktrees=[{"branch": "buildwork/issue-1-a", "path": "/tmp/wt"}],
+        pulls=[{"headRefName": "buildwork/issue-1-a", "number": 50, "url": "u"}],
+        live=set(),
+    )
+    assert items[0].status == state.READY
+
+
 def test_branch_with_no_worktree_and_no_pull_request_is_stalled():
     """The agent is gone and nothing collected the work. This is the state that
     silently loses money, so it must have a name."""

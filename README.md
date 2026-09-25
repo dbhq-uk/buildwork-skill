@@ -112,7 +112,7 @@ Full field reference: [`references/config.md`](skills/buildwork/references/confi
 1. **It asks what you are trying to get done.** Every time. The agent turns your answer into a list of issues and shows it to you before planning, which is what stops you paying for five agents doing work you did not want today. With no roadmap and no list, `plan` refuses rather than take every open issue.
 2. **It plans**, and shows you the waves, the collisions and the assumptions. Nothing is created until you approve.
 3. **It dispatches** wave one - a Paseo tab or a host subagent per issue, each with a self-contained brief and a shared digest of your conventions read once rather than five times.
-4. **It goes idle.** No polling. The finish notification arrives on its own.
+4. **It goes idle.** No polling. The notification arrives on its own when a worker finishes, errors or needs permission. A permission request goes to you, not to the orchestrator. An optional one-off watchdog catches an agent that dies without a word, and a stalled branch gets one re-dispatch onto the same branch.
 5. **It collects** - scope, hotspots, your test suite - and offers exactly one rework per failure before handing it to you.
 6. **It proposes a merge order**, with a line of reasoning per position, and checks it with trial merges that merge nothing: each branch against the base, each pair, and the order played through. A conflict goes back to the worker that owns the branch, to rebase it. You merge.
 

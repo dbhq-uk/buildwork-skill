@@ -66,17 +66,25 @@ Then dispatch it with your runner - read [references/runners.md](references/runn
 
 Then **stop and go idle**. Do not poll, do not send hurry-ups, do not check on them. Agents take 10 to 30 minutes and the notification arrives on its own.
 
+An agent can die without a word. As a safety net, you may set one watchdog per wave before you go idle: under paseo, a `create_heartbeat` with `maxRuns: 1` that fires 45 minutes from now and asks you to run `status --live` (runners.md has the call). It fires once, so it is not polling. Delete it with `delete_heartbeat` if the wave is in first.
+
 Dispatch wave 2 only when wave 1 is collected and merged. Then **run `plan` again** with the issues that are left, and dispatch the first wave of that new plan. Never dispatch a later wave from the plan you saved at the start: the base has moved since, and `plan` fetches `origin/<base>` again so the next wave starts from the merged work.
 
 ## 4. Collect
 
-On each finish notification:
+Paseo notifies you of three things: a worker **finished**, **errored**, or **needs permission**. Each has its own answer. Under subagent, a finish or an error comes back as the subagent's result, and a permission prompt appears in your session.
+
+**Finished:**
 
 ```bash
 python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" qc 143
 ```
 
 It reads which hotspot this issue was sent to change from the session `plan --save` recorded, so no `--allow-hotspot` is needed here. A subagent worker that stopped before renaming its branch is on the `worktreeBranch` the tool returned; pass it as `qc 143 --branch <worktreeBranch>`. Exit 0 is a pass, 2 is a failure. Then **read the pull request against the issue's acceptance criteria yourself.** The gates are mechanical: they catch scope and hotspot violations and a failing test run. A semantically wrong change with no covering test passes all three. A QC pass is a floor, never a verdict.
+
+**Needs permission:** the worker is waiting, and the decision is the human's. Under paseo, read the request with `list_pending_permissions`. Deny at once, with `respond_to_permission`, anything the brief forbids a worker: a merge, a push to the base branch, a change outside its own worktree. Put anything else to the human, with the issue number and exactly what the worker asked to do, and answer as they decide. Never approve on their behalf: a worker whose prompts an agent approves is the unsupervised worker runners.md rejects. Under subagent, the human answers the prompt in your session.
+
+**Errored:** the worker stopped. Read why with `get_agent_activity`. If the agent is still listed, send it one `send_agent_prompt` to carry on from where it stopped. If it is gone, re-dispatch a worker onto its branch (runners.md, "Re-dispatch"). Either one is its rework. If it stops again, it goes to the human with what happened.
 
 **On failure: one rework, then a human.** Send the specific failure back to the same worker once, via `send_agent_prompt` under paseo or `SendMessage` under subagent. If it fails again, hand it to the human with what failed. Never a third attempt, never a loop.
 
@@ -95,10 +103,14 @@ Give them the list with its reasons. **Then stop.** You do not merge, you do not
 ## Any time
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" status
+python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" status --live 12,14
 ```
 
-Reconstructed from git branches, pull requests in every state and worktrees - so it is correct after a crash, a reboot, or a session that died, and it needs no session record at all. Lead with **Stalled**: a branch with no worktree and no pull request is work somebody paid for and nobody collected. A branch whose pull request is merged or closed is done, not stalled, and `order` leaves it out.
+Reconstructed from git branches, pull requests in every state and worktrees - so it is correct after a crash, a reboot, or a session that died, and it needs no session record at all. Run it when the human asks or the watchdog fires, never on a loop.
+
+`--live` is who is actually working, and only you can read it. Under paseo, call `list_agents` once, keep the agents whose `labels` has an `issue`, and pass the issues of those whose `status` is `initializing` or `running`. Under subagent, pass the issues whose subagent you dispatched this session and has not reported back. After your session restarted, that is `--live none`: a subagent does not outlive the session that started it. Without `--live`, a worktree stands in for an agent, so a dead agent's worktree reads as Running for ever, and `status` says so.
+
+Lead with **Stalled**: a branch with no working agent and no pull request is work somebody paid for and nobody collected. It gets the same answer as an error: one prompt to its agent if it is still listed, otherwise a re-dispatch onto its branch, and either is its one rework. `doctor --live` names each one with that next step. A branch whose pull request is merged or closed is done, not stalled, and `order` leaves it out.
 
 ## The rules that do not bend
 

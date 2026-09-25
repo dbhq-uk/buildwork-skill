@@ -244,7 +244,7 @@ def cmd_qc(args: argparse.Namespace) -> int:
 def cmd_order(args: argparse.Namespace) -> int:
     root, cfg = load_ctx(args.path)
     sess = session_mod.load(root)
-    pulls = gh.open_pulls(root)
+    pulls = state.pulls_by_branch(gh.pulls(root))
 
     numbers = sess.issues if sess else sorted(
         {n for n in (state.issue_from_branch(b) for b in gh.branches(root)) if n}
@@ -253,13 +253,20 @@ def cmd_order(args: argparse.Namespace) -> int:
         fail("No session and no buildwork branches. Nothing to order.")
 
     items = []
+    finished = 0
     for number in numbers:
         branch = next(
             (b for b in gh.branches(root) if state.issue_from_branch(b) == number), None
         )
         if not branch:
             continue
-        pr = gh.pr_for_branch(pulls, branch)
+        pr = pulls.get(branch)
+        if pr and state.pr_state(pr) != "OPEN":
+            # Merged or closed, so it is finished. Offering a merged branch
+            # again asks for work already on the base; offering a closed one
+            # overrides somebody's decision not to merge it.
+            finished += 1
+            continue
         # No fallback to an empty body. With no body the issue declares no
         # paths, the scope check reports nothing to check, and a branch gh
         # could not read about is offered for merge.
@@ -283,6 +290,10 @@ def cmd_order(args: argparse.Namespace) -> int:
             qc_passed=report.passed,
         ))
 
+    if not items and finished:
+        print("Nothing left to merge. Every pull request in this set is merged or closed.")
+        return 0
+
     positions, notes = order_mod.propose(items)
     print(order_mod.render(positions, notes))
     return 0
@@ -298,7 +309,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     # stops the command with gh's own message, rather than half a report.
     all_branches = gh.branches(root)
     worktrees = gh.worktrees(root)
-    open_pulls = gh.open_pulls(root)
+    pulls = gh.pulls(root)
 
     if sess:
         stale = "  (STALE - started " + sess.age_text() + ", check it is still what you want)" if sess.stale else ""
@@ -312,7 +323,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         wave_issues=sess.issues if sess else [],
         all_branches=all_branches,
         worktrees=worktrees,
-        open_pulls=open_pulls,
+        pulls=pulls,
     )
     print(state.summarise(items))
     return 0
@@ -410,7 +421,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     pulls: list[dict] = []
     if gh_error is None:
         try:
-            pulls = gh.open_pulls(root)
+            pulls = gh.pulls(root)
         except gh.GhError as exc:
             gh_error = str(exc)
 

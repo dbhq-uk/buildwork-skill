@@ -124,7 +124,7 @@ Full field reference: [`references/config.md`](skills/buildwork/references/confi
 | Concurrent cap | 4 | 2 |
 | Resume after a crash | yes | yes |
 
-Resume works on both because it is reconstructed from git branches, open pull requests and worktrees - never from a cached map of agent ids. `status` is correct from a cold start with no session record at all.
+Resume works on both because it is reconstructed from git branches, pull requests and worktrees - never from a cached map of agent ids. `status` is correct from a cold start with no session record at all.
 
 [`references/runners.md`](skills/buildwork/references/runners.md) has the exact calls, and why detached CLI workers were rejected.
 

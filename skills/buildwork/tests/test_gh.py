@@ -73,10 +73,12 @@ def test_a_missing_issue_raises_with_gh_own_message(repo, gh_env):
         gh.issue(repo.root, 404)
 
 
-def test_open_pulls_returns_open_ones(repo, gh_env):
+def test_pulls_returns_every_state_with_its_state(repo, gh_env):
     gh_env.pull(10, "buildwork/issue-1-a")
     gh_env.pull(11, "buildwork/issue-2-b", state="MERGED")
-    assert [p["number"] for p in gh.open_pulls(repo.root)] == [10]
+    gh_env.pull(12, "buildwork/issue-3-c", state="CLOSED")
+    got = {p["number"]: p["state"] for p in gh.pulls(repo.root)}
+    assert got == {10: "OPEN", 11: "MERGED", 12: "CLOSED"}
 
 
 def test_blocked_by_reads_native_links(repo, gh_env):
@@ -88,12 +90,6 @@ def test_blocked_by_reads_native_links(repo, gh_env):
 
 def test_blocked_by_prose_patterns():
     assert gh.BLOCKED_BY_PROSE.findall("Blocked by #3, and it depends on #4.") == ["3", "4"]
-
-
-def test_pr_for_branch_matches_on_head():
-    pulls = [{"number": 1, "headRefName": "a"}, {"number": 2, "headRefName": "b"}]
-    assert gh.pr_for_branch(pulls, "b")["number"] == 2
-    assert gh.pr_for_branch(pulls, "c") is None
 
 
 def test_a_missing_binary_is_a_gh_error(tmp_path):
@@ -112,7 +108,7 @@ def test_a_failing_pr_list_raises_with_gh_stderr(repo, gh_env):
     """Never `[]`: an empty list makes every branch look stranded."""
     gh_env.fail("pr", "list")
     with pytest.raises(gh.GhError, match="Bad credentials"):
-        gh.open_pulls(repo.root)
+        gh.pulls(repo.root)
 
 
 def test_auth_status_raises_when_not_logged_in(repo, gh_env):

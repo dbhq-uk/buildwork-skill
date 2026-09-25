@@ -94,7 +94,7 @@ Give them the list with its reasons. **Then stop.** You do not merge, you do not
 python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" status
 ```
 
-Reconstructed from git branches, open pull requests and worktrees - so it is correct after a crash, a reboot, or a session that died, and it needs no session record at all. Lead with **Stalled**: a branch with no worktree and no pull request is work somebody paid for and nobody collected.
+Reconstructed from git branches, pull requests in every state and worktrees - so it is correct after a crash, a reboot, or a session that died, and it needs no session record at all. Lead with **Stalled**: a branch with no worktree and no pull request is work somebody paid for and nobody collected. A branch whose pull request is merged or closed is done, not stalled, and `order` leaves it out.
 
 ## The rules that do not bend
 

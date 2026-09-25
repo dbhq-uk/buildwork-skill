@@ -402,6 +402,34 @@ def test_qc_says_when_the_gate_could_not_run(repo, github, bw):
     assert "was not run" in result.err
 
 
+def test_qc_fails_a_branch_that_adds_a_credential(repo, github, bw):
+    token = "gh" + "p_" + "a1B2" * 9
+    github.issue(1, "one", body="Change `src/a.py`.")
+    repo.branch("buildwork/issue-1-one", {"src/a.py": f'TOKEN = "{token}"\n'})
+    result = bw("qc", "1")
+    assert result.code == 2
+    assert "[FAIL] secrets: a GitHub token in src/a.py" in result.out
+    assert token not in result.text
+
+
+def test_qc_passes_a_branch_with_no_credential_and_says_it_scanned(repo, github, bw):
+    github.issue(1, "one", body="Change `src/a.py`.")
+    repo.branch("buildwork/issue-1-one", {"src/a.py": "a\n"})
+    result = bw("qc", "1")
+    assert result.code == 0
+    assert "[pass] secrets: no known credential shape in 1 added line(s)" in result.out
+
+
+def test_order_holds_back_a_branch_that_adds_a_credential(repo, github, bw):
+    issues(github, 1, 2)
+    repo.branch("buildwork/issue-1-issue-1", {"src/f1.py": "-----BEGIN " + "RSA PRIVATE KEY-----\n"})
+    repo.branch("buildwork/issue-2-issue-2", {"src/f2.py": "x\n"})
+    github.pull(11, "buildwork/issue-1-issue-1")
+    github.pull(12, "buildwork/issue-2-issue-2")
+    out = bw("order").out
+    assert "Held back" in out and "#1" in out.split("Held back", 1)[1]
+
+
 def test_qc_without_a_branch_stops(repo, github, bw):
     github.issue(1, "one")
     result = bw("qc", "1")
@@ -682,6 +710,18 @@ def test_init_will_not_overwrite_without_force(repo, github, bw):
     assert result.code == 1
     assert "already exists" in result.err
     assert bw("init", "--force").code == 0
+
+
+def test_init_does_not_suggest_a_file_that_was_deleted(repo, github, bw):
+    remove_config(repo)
+    for n in range(4):
+        repo.on_main(f"touch {n}", {"src/routes.ts": f"{n}\n", "src/old.ts": f"{n}\n"})
+    repo.git("rm", "-q", "src/old.ts")
+    repo.commit("remove old.ts")
+    bw("init")
+    config = (repo.root / ".github/buildwork.toml").read_text(encoding="utf-8")
+    assert '"src/routes.ts"' in config
+    assert "src/old.ts" not in config
 
 
 def test_init_suggests_the_files_changed_most_often(repo, github, bw):
@@ -1152,6 +1192,14 @@ def test_plan_with_all_takes_every_open_issue_and_says_so(repo, github, bw):
     assert payload["source"] == "issues"
     assert sorted(n for wave in wave_numbers(payload) for n in wave) == [1, 2, 3]
     assert any("every open issue in no particular order" in a for a in payload["assumptions"])
+
+
+def test_plan_with_issues_and_no_roadmap_does_not_claim_every_open_issue(repo, github, bw):
+    issues(github, 1, 2, 3)
+    payload = bw("plan", "--issues", "2,1", "--json").json()
+    assert payload["source"] == "--issues"
+    assert not any("every open issue" in a for a in payload["assumptions"])
+    assert "The issues were chosen with --issues, and run in the order given." in payload["assumptions"]
 
 
 def test_plan_with_a_roadmap_needs_neither_issues_nor_all(repo, github, bw):

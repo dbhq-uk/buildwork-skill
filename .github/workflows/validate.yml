@@ -29,7 +29,9 @@ jobs:
       - name: Plugin manifest is valid JSON
         run: jq empty .claude-plugin/plugin.json
 
-      - name: SKILL.md has name and description frontmatter
+      # A `name` that differs from its folder installs under one name and is
+      # invoked under another, which is the check the rest of the estate runs.
+      - name: SKILL.md has name and description frontmatter, and name matches its folder
         run: |
           python3 - <<'PY'
           import pathlib, re, sys
@@ -45,6 +47,10 @@ jobs:
                   if key not in match.group(1):
                       print(f"{skill}: missing {key}")
                       ok = False
+              name = re.search(r"^name:\s*(.+?)\s*$", match.group(1), re.M)
+              if name and name.group(1).strip("\"'") != skill.parent.name:
+                  print(f"{skill}: name {name.group(1)!r} does not match its folder {skill.parent.name!r}")
+                  ok = False
           sys.exit(0 if ok else 1)
           PY
 

@@ -37,6 +37,18 @@ def test_a_detached_worktree_has_no_branch(repo, tmp_path):
     assert detached == [{"path": str(tmp_path / "detached"), "branch": None}]
 
 
+def test_added_lines_are_the_branch_own_additions_with_their_paths(repo):
+    repo.write("src/a.py", "keep\n")
+    repo.commit("base")
+    repo.branch("buildwork/issue-1-a", {
+        "src/a.py": "keep\nnew line\n",
+        "notes.md": "++ looks like a header\n",
+    })
+    repo.on_main("elsewhere", {"src/other.py": "not ours\n"}, push=False)
+    added = gh.added_lines(repo.root, "main", "buildwork/issue-1-a")
+    assert sorted(added) == [("notes.md", "++ looks like a header"), ("src/a.py", "new line")]
+
+
 def test_changed_files_are_the_branch_own_changes(repo):
     """Three dots: what landed on main after the branch was cut is not the branch's."""
     repo.branch("buildwork/issue-1-a", {"src/a.py": "a\n"})

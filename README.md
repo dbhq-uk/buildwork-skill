@@ -47,9 +47,9 @@ Worktrees solve exactly one problem: two agents writing the same file at the sam
 
 buildwork's job is the layer above isolation:
 
-- **It refuses.** One issue, or several issues that are really one piece of work, gets a `DO NOT FAN OUT` and a reason. A single agent matches or beats a multi-agent system on most tasks, at roughly a fifteenth of the tokens. The commonest mistake this tool can prevent is using it.
+- **It refuses.** One issue, or several issues that are really one piece of work, gets a `DO NOT FAN OUT` and a reason. Every worker is a full context of its own, so fan-out spends tokens to buy wall-clock time, and one issue has nothing to buy. Splitting one task across agents has been measured at about fifteen times the tokens of a chat ([Anthropic, 2025](https://www.anthropic.com/engineering/multi-agent-research-system)). The commonest mistake this tool can prevent is using it.
 - **It serialises collisions.** Two issues that claim the same file never share a wave. Before you merge, it finds the collisions nobody declared, from the real diffs.
-- **It checks before it hands anything over.** Scope, hotspots and your own test suite, then an honest statement that mechanical checks are a floor and not a verdict.
+- **It checks before it hands anything over.** Scope, hotspots, your own test suite and a scan for committed credentials, then an honest statement that mechanical checks are a floor and not a verdict.
 - **It never merges.** It proposes an order and gives its reasons. There is no merge verb in the codebase.
 
 ## Install
@@ -94,14 +94,18 @@ gh's own error rather than reading the failure as an empty repository, and
 `doctor` checks the login and which repository `gh` resolves this clone to.
 
 Plus a runner: Paseo, or a host whose subagent tool can create a git
-worktree. Neither is installed by this skill.
+worktree. Neither is installed by this skill. **Under Codex, the runner is
+Paseo.** Codex CLI subagents share the parent's working directory, so none
+gets a worktree of its own
+([openai/codex#18969](https://github.com/openai/codex/issues/18969)), and the
+subagent runner needs one per worker.
 
 ## Opt in, per repository
 
-buildwork does nothing at all until a repository has a `.github/buildwork.toml` saying `enabled = true`. Write a starter:
+buildwork does nothing at all until a repository has a `.github/buildwork.toml` saying `enabled = true`. To write a starter, ask your agent to run buildwork's `init` in the repository. It knows where the skill is installed, which differs between a plugin, a local install and Codex. From a clone of this repository, it is:
 
 ```bash
-python3 ~/.claude/skills/buildwork/scripts/buildwork.py init
+python3 skills/buildwork/scripts/buildwork.py --path /path/to/your/repository init
 ```
 
 It suggests hotspots from the files most often touched in recent merges, and writes `enabled = false`. Arming it is your edit, deliberately.

@@ -26,9 +26,9 @@ faith and declined:
 - **No merge verb.** Not even for "obviously clean" pull requests. In a
   repository where merging deploys, that absence is the whole safety story.
 - **No `--force` past a refusal.** `plan` refusing to fan out is a correct
-  result. A single agent beats a multi-agent system on most tasks at a
-  fifteenth of the tokens, so the commonest mistake this tool can prevent is
-  using it.
+  result. Every worker is a full context of its own, so fan-out spends tokens
+  to buy wall-clock time, and one issue has nothing to buy. The commonest
+  mistake this tool can prevent is using it.
 - **No caching of agent ids.** Resume is reconstructed from git and GitHub so
   it survives a crash. A cache makes it faster and wrong.
 - **No PyPI dependency.** Standard library only. This is why the config is TOML.

@@ -141,6 +141,32 @@ def changed_files(cwd: Path, base: str, branch: str) -> list[str]:
     return [line.strip() for line in out.splitlines() if line.strip()]
 
 
+def added_lines(cwd: Path, base: str, branch: str) -> list[tuple[str, str]]:
+    """Every line the branch adds, as (path, line), against the merge base with `base`.
+
+    Parsed with a header state, because an added line whose text starts with
+    `++` is printed as `+++` and would otherwise read as a file header.
+    """
+    out = _run(
+        ["git", "-c", "core.quotePath=false", "diff", "-U0", "--no-color", "--no-ext-diff",
+         f"{base}...{branch}"],
+        cwd=cwd,
+    )
+    added: list[tuple[str, str]] = []
+    path, header = "", False
+    for line in out.splitlines():
+        if line.startswith("diff --git "):
+            path, header = "", True
+        elif header and line.startswith("+++ "):
+            target = line[4:]
+            path = target[2:] if target.startswith("b/") else ""
+        elif line.startswith("@@"):
+            header = False
+        elif not header and line.startswith("+"):
+            added.append((path, line[1:]))
+    return added
+
+
 def trial_merge(cwd: Path, ours: str, theirs: str) -> tuple[str, list[str]]:
     """Merge `theirs` into `ours` in the object store only: (tree, conflicted paths).
 

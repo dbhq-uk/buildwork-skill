@@ -1,19 +1,22 @@
 """The mechanical gates, run at collection before anything is offered for merge.
 
-Three checks, all deterministic and all cheap:
+Four checks, all deterministic and all cheap:
 
 - the domain gate passes (the config's `gate` command, usually the test suite)
 - the diff stays inside the files the issue declared
 - no hotspot was touched without permission
+- no line the branch adds looks like a credential of a known shape
 
 The honest ceiling, which belongs in front of anyone reading a pass: mechanical
 QC catches scope and spec violations. A semantically wrong change with no
-covering test passes all three. This is a floor, not a guarantee, and a pass
+covering test passes all four, and so does a secret in a shape the scan does
+not know. This is a floor, not a guarantee, and a pass
 here is never a substitute for reading the pull request.
 """
 
 from __future__ import annotations
 
+import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -93,6 +96,45 @@ def hotspot_check(changed: list[str], hotspots: tuple[str, ...], allowed: tuple[
     return Check("hotspots", True, "no unpermitted hotspot touched")
 
 
+# Credential shapes with a fixed prefix or a fixed header, so a match is
+# almost never anything else. A generic "long random string" rule would fail
+# every branch that adds a hash or a fixture, and a check that cries wolf is
+# switched off. What matched is named; the value never is.
+SECRETS = (
+    ("a private key", re.compile(r"-----BEGIN (?:[A-Z]+ )?PRIVATE KEY(?: BLOCK)?-----")),
+    ("an AWS access key id", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
+    ("a GitHub token", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{50,})")),
+    ("a Slack token", re.compile(r"\bxox[abposr]-[A-Za-z0-9-]{10,}")),
+    ("a Google API key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}")),
+    ("a Stripe live key", re.compile(r"\b[rs]k_live_[0-9A-Za-z]{20,}")),
+    ("an Anthropic API key", re.compile(r"\bsk-ant-[A-Za-z0-9_-]{20,}")),
+    ("an OpenAI project key", re.compile(r"\bsk-proj-[A-Za-z0-9_-]{20,}")),
+)
+
+
+def secret_check(added: list[tuple[str, str]]) -> Check:
+    """No line the branch adds may look like a known credential.
+
+    `added` is (path, line) for every added line in the branch's diff. A
+    worker that commits a token passes every other gate, and a push has
+    already exposed it, so the failure says to rotate it, not only remove it.
+    """
+    hits: list[str] = []
+    for path, line in added:
+        for name, pattern in SECRETS:
+            if pattern.search(line):
+                hit = f"{name} in {path or 'an added file'}"
+                if hit not in hits:
+                    hits.append(hit)
+    if hits:
+        shown = "; ".join(hits[:5]) + ("..." if len(hits) > 5 else "")
+        return Check(
+            "secrets", False,
+            f"{shown}. Take it out of the branch, and rotate it: pushing it has already exposed it",
+        )
+    return Check("secrets", True, f"no known credential shape in {len(added)} added line(s)")
+
+
 def run_gate(command: str | None, cwd: Path) -> Check:
     """Run the configured domain gate in the worker's worktree."""
     if not command:
@@ -121,10 +163,13 @@ def check(
     allowed_hotspots: tuple[str, ...] = (),
     gate_command: str | None = None,
     worktree: Path | None = None,
+    added: list[tuple[str, str]] | None = None,
 ) -> Report:
     report = Report(issue=issue, branch=branch)
     report.checks.append(scope_check(changed, declared))
     report.checks.append(hotspot_check(changed, hotspots, allowed_hotspots))
+    if added is not None:
+        report.checks.append(secret_check(added))
     if worktree is not None:
         report.checks.append(run_gate(gate_command, worktree))
     return report

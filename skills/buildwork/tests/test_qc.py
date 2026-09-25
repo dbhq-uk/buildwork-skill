@@ -110,3 +110,52 @@ def test_failure_summary_names_the_specific_failure():
     summary = report.summary()
     assert "#7" in summary
     assert "hotspots failed" in summary
+
+
+# --- secrets --------------------------------------------------------------
+# Every token here is built at run time, so no credential-shaped literal is in
+# the source for a scanner, GitHub's included, to trip on.
+
+def _tokens():
+    return {
+        "a private key": "-----BEGIN " + "OPENSSH PRIVATE KEY-----",
+        "an AWS access key id": "AKIA" + "ABCDEFGHIJKLMNOP",
+        "a GitHub token": "gh" + "p_" + "a1B2" * 9,
+        "a Slack token": "xo" + "xb-" + "1234567890-abcdef",
+        "a Google API key": "AI" + "za" + "x" * 35,
+        "a Stripe live key": "sk" + "_live_" + "a1" * 12,
+        "an Anthropic API key": "sk-" + "ant-" + "a1_" * 8,
+        "an OpenAI project key": "sk-" + "proj-" + "a1-" * 8,
+    }
+
+
+def test_every_known_credential_shape_fails_the_branch():
+    for name, token in _tokens().items():
+        check = qc.secret_check([("src/config.py", f'TOKEN = "{token}"')])
+        assert not check.passed, name
+        assert f"{name} in src/config.py" in check.detail
+        assert token not in check.detail, "the value itself is never printed"
+        assert "rotate" in check.detail
+
+
+def test_hashes_and_fixtures_are_not_credentials():
+    lines = [
+        ("lock.json", '"integrity": "sha512-' + "A" * 86 + '=="'),
+        ("src/a.py", "commit = '" + "0123456789abcdef" * 2 + "5678abcd'"),
+        ("docs/x.md", "Set GITHUB_TOKEN in your environment, never in the repository."),
+        ("src/b.py", "key = os.environ['AWS_ACCESS_KEY_ID']"),
+    ]
+    assert qc.secret_check(lines).passed
+
+
+def test_one_credential_in_many_files_names_each_file_once():
+    token = _tokens()["a GitHub token"]
+    check = qc.secret_check([("a.env", token), ("a.env", token), ("b.env", token)])
+    assert check.detail.count("in a.env") == 1 and "in b.env" in check.detail
+
+
+def test_the_secret_check_runs_only_when_the_added_lines_are_given():
+    names = [c.name for c in qc.check(1, "b", [], (), ()).checks]
+    assert "secrets" not in names
+    names = [c.name for c in qc.check(1, "b", [], (), (), added=[]).checks]
+    assert "secrets" in names

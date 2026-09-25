@@ -30,11 +30,15 @@ docs/superpowers/specs/             # the dated design record
 Everything else here is a preference. These are not.
 
 **1. There is no merge verb, and there must never be one.** No `gh pr merge`,
-no push to the base branch, no rebase of a worker's branch. `order.py` proposes
-and renders; it cannot act. In a repository where merging to the default branch
-is the deploy - which is true of the repository this was written for - that
-absence is the only thing standing between an agent and production. Do not add
-a "just merge the clean ones" convenience.
+no push to the base branch, and the orchestrator never rebases a worker's
+branch. A worker may rebase its own branch onto `origin/<base>`, as its one
+rework, when `order` finds a conflict. `order.py` proposes and renders; it
+cannot act. The conflict check uses `git merge-tree --write-tree` and
+`git commit-tree`, which write objects and move no ref, index or worktree. In
+a repository where merging to the default branch is the deploy - which is true
+of the repository this was written for - that absence is the only thing
+standing between an agent and production. Do not add a "just merge the clean
+ones" convenience.
 
 **2. The orchestrator never edits code.** Every edit happens in a worker's
 worktree on a worker's branch. A thin orchestrator that classifies, delegates

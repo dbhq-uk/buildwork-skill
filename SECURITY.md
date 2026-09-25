@@ -34,11 +34,16 @@ is not GitHub via a CLI you already trust.
 
 ### Writes to your repository
 
-The scripts write in exactly two places:
+The scripts write in exactly these places:
 
 - `.github/buildwork.toml`, and only from `init`, and only with
   `enabled = false`. `init` refuses to overwrite an existing config without
   `--force`.
+- The remote-tracking ref `origin/<base>`, which `plan` and `order` fetch.
+  No local branch moves.
+- The object store, from `order`'s conflict check. `git merge-tree
+  --write-tree` and `git commit-tree` write the trees and commits of trial
+  merges. No ref points at them, and git's garbage collection removes them.
 - Nothing else. No branch is created, deleted, checked out, pushed, merged or
   rebased by any script in this repository.
 

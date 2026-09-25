@@ -135,6 +135,43 @@ def changed_files(cwd: Path, base: str, branch: str) -> list[str]:
     return [line.strip() for line in out.splitlines() if line.strip()]
 
 
+def trial_merge(cwd: Path, ours: str, theirs: str) -> tuple[str, list[str]]:
+    """Merge `theirs` into `ours` in the object store only: (tree, conflicted paths).
+
+    `git merge-tree --write-tree` computes the merge and writes the result as
+    objects. It moves no ref and touches no worktree and no index, so this
+    predicts a conflict without merging anything. Exit 1 means conflicts;
+    anything else non-zero means git could not do it, and raises.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "merge-tree", "--write-tree", "--name-only", "--no-messages", ours, theirs],
+            cwd=cwd, capture_output=True, text=True, timeout=TIMEOUT,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        raise GhError(f"git merge-tree could not run: {exc}") from exc
+    if proc.returncode not in (0, 1):
+        raise GhError(f"git merge-tree failed ({proc.returncode}): {proc.stderr.strip()}")
+    lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    tree = lines[0] if lines else ""
+    conflicts = list(dict.fromkeys(lines[1:])) if proc.returncode == 1 else []
+    return tree, conflicts
+
+
+def trial_commit(cwd: Path, tree: str, parent: str) -> str:
+    """A commit object for a trial merge's tree, so the next trial can build on it.
+
+    `git merge-tree` in the git this runs on takes commits, not trees. The
+    object is written and nothing points at it: no ref moves, and git's
+    garbage collection removes it later.
+    """
+    return _run(
+        ["git", "-c", "user.name=buildwork", "-c", "user.email=buildwork@localhost",
+         "commit-tree", tree, "-p", parent, "-m", "buildwork trial merge"],
+        cwd=cwd,
+    ).strip()
+
+
 def diff_size(cwd: Path, base: str, branch: str) -> int:
     """Total lines added plus removed. Used only to break ties in merge order."""
     out = _run(["git", "diff", "--numstat", f"{base}...{branch}"], cwd=cwd)

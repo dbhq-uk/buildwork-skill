@@ -88,6 +88,8 @@ When the wave is in:
 python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" order
 ```
 
+It also runs trial merges with `git merge-tree`, which merges nothing and moves no ref: every branch against `origin/<base>`, every pair of branches, and the proposed order played through. A `!` conflict line names the files and whose branch must move. **A conflict is a rework for the worker that owns the branch**: "rebase your branch onto `origin/<base>` and resolve the conflict", sent the same way as any rework, and it counts as that worker's one. For two branches that conflict with each other, the human merges the first, then the second worker rebases. You never rebase anything yourself.
+
 Give them the list with its reasons. **Then stop.** You do not merge, you do not `gh pr merge`, and you do not push to the base branch. In a repository where merging deploys, that rule is the only thing between an agent and production.
 
 ## Any time
@@ -100,7 +102,7 @@ Reconstructed from git branches, pull requests in every state and worktrees - so
 
 ## The rules that do not bend
 
-1. **Never merge.** No `gh pr merge`, no push to base, no rebase of a worker's branch.
+1. **Never merge.** No `gh pr merge`, no push to base, and you never rebase a worker's branch. A worker may rebase its own branch, as its one rework, when you send it back for a conflict.
 2. **Never edit code as the orchestrator.** If something small needs doing, it is an issue or it is the human's. After a `DO NOT FAN OUT`, buildwork has ended and there is nothing to orchestrate, so this rule no longer applies.
 3. **No config, no `enabled = true`, no action.** Not a warning. Nothing.
 4. **Ask the goal before planning.** Every time.
@@ -117,4 +119,4 @@ Reconstructed from git branches, pull requests in every state and worktrees - so
 
 ## Requirements
 
-`git`, `gh` (authenticated), and Python 3.11 or later for `tomllib`. No packages, no venv.
+`git` 2.38 or later for `git merge-tree --write-tree`, `gh` (authenticated), and Python 3.11 or later for `tomllib`. No packages, no venv.

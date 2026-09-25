@@ -418,6 +418,16 @@ def cmd_order(args: argparse.Namespace) -> int:
     if not numbers:
         fail("No session and no buildwork branches. Nothing to order.")
 
+    # The conflict check below is only as good as the base it merges into.
+    # Work merged on GitHub since the last fetch is what most often conflicts.
+    fetch_note = ""
+    try:
+        gh.fetch_base(root, cfg.base)
+    except gh.GhError as exc:
+        fetch_note = (
+            f"! Could not fetch {gh.remote_base(cfg.base)}, so conflicts were checked against "
+            f"the copy from the last fetch. {exc}"
+        )
     base = gh.base_ref(root, cfg.base)
     items = []
     finished = 0
@@ -465,8 +475,75 @@ def cmd_order(args: argparse.Namespace) -> int:
         return 0
 
     positions, notes = order_mod.propose(items)
+    if fetch_note:
+        notes.append(fetch_note)
+    notes.extend(_conflicts(root, base, [pos.item for pos in positions]))
     print(order_mod.render(positions, notes))
     return 0
+
+
+def _conflicts(root: Path, base: str, ordered: list[order_mod.Ready]) -> list[str]:
+    """What git would refuse to merge, from trial merges that merge nothing.
+
+    Three checks, because each misses something the others see: every
+    branch against the base, every pair of branches, and the proposed order
+    played through from the base, which finds a conflict that appears only
+    once earlier branches are in. Only the real diffs are used, so a file no
+    issue declared is caught too.
+    """
+    def name(item: order_mod.Ready) -> str:
+        return f"PR #{item.pr}" if item.pr else f"branch {item.branch}"
+
+    def paths(files: list[str]) -> str:
+        return ", ".join(files)
+
+    notes: list[str] = []
+    with_base: set[int] = set()
+    for item in ordered:
+        _, files = gh.trial_merge(root, base, item.branch)
+        if files:
+            with_base.add(item.issue)
+            notes.append(
+                f"! {name(item)} conflicts with {base} in {paths(files)}. "
+                f"Its rework: its worker rebases it onto {base}."
+            )
+
+    clash: set[frozenset[int]] = set()
+    for i, first in enumerate(ordered):
+        for second in ordered[i + 1:]:
+            _, files = gh.trial_merge(root, first.branch, second.branch)
+            if files:
+                clash.add(frozenset((first.issue, second.issue)))
+                notes.append(
+                    f"! {name(first)} and {name(second)} conflict with each other in "
+                    f"{paths(files)}. Merge {name(first)} first, then {name(second)}'s worker "
+                    f"rebases it onto {base}."
+                )
+
+    tip = base
+    merged: list[order_mod.Ready] = []
+    for item in ordered:
+        if item.issue in with_base:
+            continue
+        tree, files = gh.trial_merge(root, tip, item.branch)
+        if files:
+            if not any(frozenset((m.issue, item.issue)) in clash for m in merged):
+                before = ", ".join(name(m) for m in merged)
+                notes.append(
+                    f"! In this order, {name(item)} conflicts once {before} "
+                    f"{'has' if len(merged) == 1 else 'have'} merged, in {paths(files)}. "
+                    f"No single branch explains it. When they are in, its worker rebases it onto {base}."
+                )
+            continue
+        tip = gh.trial_commit(root, tree, tip)
+        merged.append(item)
+
+    if ordered and not notes:
+        notes.append(
+            f"No conflicts: each branch merges cleanly into {base}, with every other branch, "
+            f"and in this order. git checked the text, not whether the changes work together."
+        )
+    return notes
 
 
 # --- status ---------------------------------------------------------------

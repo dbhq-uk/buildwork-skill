@@ -85,6 +85,28 @@ hotspot. The hotspot list exists for the files that conflict *even when no
 issue admits to touching them* - which is most of them, because issues are
 written about outcomes and not about route registries.
 
+## Before the merge: trial merges
+
+Planning sees only the paths an issue names, and most issues name none. So
+`order` checks the real diffs once the work is in, with
+`git merge-tree --write-tree`. It computes a merge as objects and moves no
+ref, no index and no worktree, so nothing is merged. Three checks, because
+each misses something the others catch:
+
+1. Each branch against `origin/<base>`, fetched first. This catches work that
+   landed while the branch was being written.
+2. Every pair of branches. This catches two workers who edited one file that
+   neither issue named.
+3. The proposed order, played through from `origin/<base>`. Rarely, every
+   pair merges cleanly and a branch still conflicts once two others are in,
+   because git lines up the combined change differently.
+
+A conflict is a rework for the worker that owns the branch: rebase it onto
+`origin/<base>`, resolve it, run the checks, push with `--force-with-lease`.
+It is that worker's one rework. The orchestrator never rebases anything. A
+clean result means git can merge the text. It does not mean the changes work
+together; that is what the gate and a human reading the diff are for.
+
 ## Hotspots
 
 `buildwork.py init` suggests them from the files most often touched across

@@ -45,6 +45,11 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
+def load_session(root: Path) -> session_mod.Session | None:
+    """The saved session for the repository gh resolves this clone to, from any of its worktrees."""
+    return session_mod.load(gh.repo_name(root))
+
+
 def load_ctx(path: str) -> tuple[Path, config_mod.Config]:
     try:
         root = gh.repo_root(Path(path).resolve())
@@ -192,8 +197,9 @@ def cmd_plan(args: argparse.Namespace) -> int:
     }
 
     if args.save and not plan.refusal:
-        session_mod.save(root, session_mod.Session(
-            repo=root.name, goal=args.goal or "", runner=runner,
+        repo = gh.repo_name(root)
+        session_mod.save(repo, session_mod.Session(
+            repo=repo, goal=args.goal or "", runner=runner,
             issues=plan.dispatched, waves=plan.waves,
             hotspots={
                 str(c.number): list(c.hotspots)
@@ -350,7 +356,7 @@ def _brief_runner(args: argparse.Namespace, cfg: config_mod.Config, root: Path) 
     """
     if args.runner:
         return args.runner
-    sess = session_mod.load(root)
+    sess = load_session(root)
     if sess and sess.runner in config_mod.RUNNER_WAVE_CAP:
         return sess.runner
     if cfg.runner in config_mod.RUNNER_WAVE_CAP:
@@ -370,7 +376,7 @@ def cmd_qc(args: argparse.Namespace) -> int:
     except gh.GhError as exc:
         fail(str(exc))
 
-    branch = args.branch or state.branch_for(args.issue, issue.get("title", ""))
+    branch = args.branch or _find_branch(root, args.issue, issue.get("title", ""))
     if branch not in gh.branches(root):
         fail(f"No branch {branch}. Nothing to check.")
 
@@ -393,7 +399,7 @@ def cmd_qc(args: argparse.Namespace) -> int:
     # The plan's permission, saved at `plan --save`, plus any given here. The
     # orchestrator runs `qc N` bare at collection, so without the saved one
     # the branch sent to change a hotspot would fail for doing exactly that.
-    sess = session_mod.load(root)
+    sess = load_session(root)
     allowed = tuple(dict.fromkeys(
         tuple(args.allow_hotspot or ()) + (sess.allowed_hotspots(args.issue) if sess else ())
     ))
@@ -410,11 +416,32 @@ def cmd_qc(args: argparse.Namespace) -> int:
     return 0 if report.passed else 2
 
 
+def _find_branch(root: Path, number: int, title: str) -> str:
+    """The branch `qc` checks for an issue, found by its number as `status` and `order` find it.
+
+    The current title only breaks a tie. A worker's branch was named from the
+    title at dispatch, and an issue retitled since then would otherwise have
+    no branch at all.
+    """
+    found = state.branches_for(number, gh.branches(root))
+    if len(found) == 1:
+        return found[0]
+    named = state.branch_for(number, title)
+    if not found:
+        fail(f"No branch for #{number}: nothing is named {state.BRANCH_PREFIX}{number}-*. Nothing to check.")
+    if named in found:
+        return named
+    fail(
+        f"#{number} has {len(found)} buildwork branches ({', '.join(found)}), and none is named "
+        f"from its current title. Pass --branch with the one to check."
+    )
+
+
 # --- order ----------------------------------------------------------------
 
 def cmd_order(args: argparse.Namespace) -> int:
     root, cfg = load_ctx(args.path)
-    sess = session_mod.load(root)
+    sess = load_session(root)
     pulls = state.pulls_by_branch(gh.pulls(root))
 
     numbers = sess.issues if sess else sorted(
@@ -555,7 +582,7 @@ def _conflicts(root: Path, base: str, ordered: list[order_mod.Ready]) -> list[st
 
 def cmd_status(args: argparse.Namespace) -> int:
     root, cfg = load_ctx(args.path)
-    sess = session_mod.load(root)
+    sess = load_session(root)
 
     # Everything is read before anything is printed. A gh failure raises and
     # stops the command with gh's own message, rather than half a report.
@@ -687,14 +714,15 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         if not (root / name).is_file():
             problems.append(f"Digest file `{name}` does not exist and will be missing from every worker's brief.")
 
-    sess = session_mod.load(root)
-    if sess and sess.stale:
-        problems.append(f"Session record is {sess.age_text()} old: {sess.goal!r}. Probably finished; clear it.")
-
     problems += _base_checks(root, cfg.base)
 
-    gh_problems, gh_error = _gh_checks(root)
+    # The session record is keyed on the repository gh names, so it is read
+    # only once gh has said which repository this is.
+    gh_problems, gh_error, repo = _gh_checks(root)
     problems += gh_problems
+    sess = session_mod.load(repo) if repo else None
+    if sess and sess.stale:
+        problems.append(f"Session record is {sess.age_text()} old: {sess.goal!r}. Probably finished; clear it.")
     pulls: list[dict] = []
     if gh_error is None:
         try:
@@ -770,8 +798,8 @@ def _base_checks(root: Path, base: str) -> list[str]:
     return problems
 
 
-def _gh_checks(root: Path) -> tuple[list[str], str | None]:
-    """Problems with gh itself, and gh's own error if it cannot be used at all.
+def _gh_checks(root: Path) -> tuple[list[str], str | None, str | None]:
+    """Problems with gh itself, gh's own error if it cannot be used at all, and the repository it named.
 
     Every other command trusts gh's answers. These are the ways it answers
     wrongly or not at all: no working login, a clone gh cannot map to a
@@ -781,14 +809,14 @@ def _gh_checks(root: Path) -> tuple[list[str], str | None]:
     try:
         gh.auth_status(root)
     except gh.GhError as exc:
-        return ["gh is not logged in, or its token no longer works. Run `gh auth login`."], str(exc)
+        return ["gh is not logged in, or its token no longer works. Run `gh auth login`."], str(exc), None
     try:
         name = gh.repo_name(root)
     except gh.GhError as exc:
         return [
             "gh cannot tell which GitHub repository this clone is. Check `git remote -v`, "
             "or run `gh repo set-default`."
-        ], str(exc)
+        ], str(exc), None
 
     names = gh.remotes(root)
     if len(names) > 1 and not gh.default_remote_set(root):
@@ -796,8 +824,8 @@ def _gh_checks(root: Path) -> tuple[list[str], str | None]:
             f"This clone has {len(names)} remotes ({', '.join(names)}) and no default, so gh "
             f"chose {name} on its own. If that is not the repository you mean, run "
             f"`gh repo set-default`."
-        ], None
-    return [], None
+        ], None, name
+    return [], None, name
 
 
 # --- cli ------------------------------------------------------------------

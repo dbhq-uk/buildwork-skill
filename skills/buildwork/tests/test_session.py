@@ -17,43 +17,63 @@ def state_dir(tmp_path, monkeypatch):
 
 
 def test_save_and_load_round_trip(state_dir, tmp_path):
-    root = tmp_path / "repo"
-    saved = session.Session(repo="repo", goal="ship the thing", issues=[1, 2], waves=[[1, 2]], runner="paseo")
-    session.save(root, saved)
-    loaded = session.load(root)
+    saved = session.Session(repo="owner/repo", goal="ship the thing", issues=[1, 2], waves=[[1, 2]], runner="paseo")
+    session.save("owner/repo", saved)
+    loaded = session.load("owner/repo")
     assert loaded == saved
 
 
 def test_nothing_saved_loads_as_none(state_dir, tmp_path):
-    assert session.load(tmp_path / "repo") is None
+    assert session.load("owner/repo") is None
 
 
 def test_record_is_private(state_dir, tmp_path):
-    path = session.save(tmp_path / "repo", session.Session(repo="repo", goal="g"))
+    path = session.save("owner/repo", session.Session(repo="owner/repo", goal="g"))
     assert stat.S_IMODE(state_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
+def test_the_record_is_keyed_on_owner_and_repo(state_dir):
+    """Not the folder name: two repositories called `repo` under two owners are two records."""
+    session.save("owner/repo", session.Session(repo="owner/repo", goal="mine"))
+    session.save("other/repo", session.Session(repo="other/repo", goal="theirs"))
+    assert session.load("owner/repo").goal == "mine"
+    assert session.load("other/repo").goal == "theirs"
+    assert (state_dir / "owner" / "repo.json").is_file()
+
+
+def test_the_key_ignores_case_as_github_does(state_dir):
+    session.save("Owner/Repo", session.Session(repo="Owner/Repo", goal="g"))
+    assert session.load("owner/repo").goal == "g"
+
+
+@pytest.mark.parametrize("bad", ["", "repo", "owner/", "/repo", "owner/a/b", "../repo", "owner/.."])
+def test_a_key_that_is_not_owner_and_repo_is_refused(state_dir, bad):
+    with pytest.raises(ValueError):
+        session.save(bad, session.Session(repo=bad, goal="g"))
+
+
 def test_a_corrupt_record_is_treated_as_none(state_dir, tmp_path):
-    path = session.save(tmp_path / "repo", session.Session(repo="repo", goal="g"))
+    path = session.save("owner/repo", session.Session(repo="owner/repo", goal="g"))
     path.write_text("{not json", encoding="utf-8")
-    assert session.load(tmp_path / "repo") is None
+    assert session.load("owner/repo") is None
 
 
 def test_unknown_keys_are_ignored(state_dir, tmp_path):
     """A record written by a newer version must still load."""
-    path = session.save(tmp_path / "repo", session.Session(repo="repo", goal="g"))
+    path = session.save("owner/repo", session.Session(repo="owner/repo", goal="g"))
     data = json.loads(path.read_text(encoding="utf-8"))
     data["something_new"] = True
     path.write_text(json.dumps(data), encoding="utf-8")
-    assert session.load(tmp_path / "repo").goal == "g"
+    assert session.load("owner/repo").goal == "g"
 
 
 def test_clear_removes_the_record(state_dir, tmp_path):
-    session.save(tmp_path / "repo", session.Session(repo="repo", goal="g"))
-    session.clear(tmp_path / "repo")
-    assert session.load(tmp_path / "repo") is None
-    session.clear(tmp_path / "repo")  # clearing nothing is not an error
+    session.save("owner/repo", session.Session(repo="owner/repo", goal="g"))
+    session.clear("owner/repo")
+    assert session.load("owner/repo") is None
+    session.clear("owner/repo")  # clearing nothing is not an error
 
 
 def test_a_record_older_than_three_days_is_stale():
@@ -73,16 +93,16 @@ def test_age_text(age, text):
 
 
 def test_hotspot_permission_round_trips(state_dir, tmp_path):
-    saved = session.Session(repo="repo", goal="g", issues=[1, 2], hotspots={"1": ["public/_headers"]})
-    session.save(tmp_path / "repo", saved)
-    loaded = session.load(tmp_path / "repo")
+    saved = session.Session(repo="owner/repo", goal="g", issues=[1, 2], hotspots={"1": ["public/_headers"]})
+    session.save("owner/repo", saved)
+    loaded = session.load("owner/repo")
     assert loaded.allowed_hotspots(1) == ("public/_headers",)
     assert loaded.allowed_hotspots(2) == ()
 
 
 def test_a_record_from_before_hotspots_were_saved_still_loads(state_dir, tmp_path):
-    path = session.save(tmp_path / "repo", session.Session(repo="repo", goal="g"))
+    path = session.save("owner/repo", session.Session(repo="owner/repo", goal="g"))
     data = json.loads(path.read_text(encoding="utf-8"))
     del data["hotspots"]
     path.write_text(json.dumps(data), encoding="utf-8")
-    assert session.load(tmp_path / "repo").allowed_hotspots(1) == ()
+    assert session.load("owner/repo").allowed_hotspots(1) == ()

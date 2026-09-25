@@ -61,9 +61,11 @@ issue is listed under Next and under a held heading, it is held**, whichever
 comes first, and `plan` says so in a `!` warning. `## Bottlenecks` only
 describes issues listed elsewhere, so a mention there holds nothing.
 
-No roadmap is not an error. The plan falls back to every open issue in no
-particular order and **says so**, because presenting arbitrary order as a plan
-is worse than having no plan.
+No roadmap is not an error, but it is not a selection either. Without
+`--issues`, `plan` refuses rather than take every open issue whatever the
+goal was. With `--all` it falls back to every open issue in no particular
+order and **says so**, because presenting arbitrary order as a plan is worse
+than having no plan.
 
 ### `base`
 

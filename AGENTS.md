@@ -79,6 +79,10 @@ the stdlib and no YAML parser is.
   hardcode `~/.claude/skills/buildwork` or any absolute path** - it is wrong
   under a Codex install and wrong under a plugin install. `install-codex.sh`
   rewrites the variable at install time because Codex does not substitute it.
+  **Always braced.** Claude Code substitutes `${CLAUDE_SKILL_DIR}` and leaves
+  `$CLAUDE_SKILL_DIR` to the shell, where it is unset, so the unbraced form
+  runs `/scripts/buildwork.py`. CI fails on it, and `test_skill_md.py` runs
+  the `doctor` command as the host would.
 - `SKILL.md` is the short half on purpose. Workflow, rules and commands live
   there; reasoning lives in `references/` and is read on demand.
 - The branch pattern `buildwork/issue-<N>-<slug>` is not configurable. It is

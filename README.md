@@ -35,7 +35,7 @@ Wave 2 (alone):
       buildwork/issue-144-positioning-changed-on-the
 
 ! #151 waits a wave: it touches .github/workflows/deploy.yml, already claimed in this wave.
-~ No dependency links were readable, so these issues are treated as independent.
+~ Dependency links were read from GitHub, through gh's `blockedBy` field.
 ```
 
 ## What makes it different

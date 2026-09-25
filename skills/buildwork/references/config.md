@@ -124,7 +124,8 @@ of them is never dispatched, whether it came from the roadmap or from
 can put on an issue from GitHub without editing the roadmap.
 
 `plan` also holds, without any setting, an issue whose blocker is open and not
-in the selection, and an issue blocked by one that is held.
+in the selection, including one in another repository, and an issue blocked
+by one that is held.
 
 ### `wave.max`
 

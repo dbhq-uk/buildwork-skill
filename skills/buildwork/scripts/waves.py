@@ -45,8 +45,9 @@ class Plan:
     cycles: list[list[int]] = field(default_factory=list)
     assumptions: list[str] = field(default_factory=list)
     # Issue number to what it waits on: an open blocker outside this session,
-    # or an issue that is itself held.
-    held: dict[int, list[int]] = field(default_factory=dict)
+    # an issue that is itself held, or an open issue in another repository
+    # written as `owner/name#N`.
+    held: dict[int, list[int | str]] = field(default_factory=dict)
 
     @property
     def dispatched(self) -> list[int]:
@@ -136,22 +137,28 @@ def hold_blocked(
     candidates: list[Candidate],
     graph: dict[int, list[int]],
     open_outside: set[int] | frozenset[int],
-) -> dict[int, list[int]]:
+    foreign: dict[int, list[str]] | None = None,
+) -> dict[int, list[int | str]]:
     """Every candidate that cannot start this session, and what it waits on.
 
     A candidate is held when a blocker is open and outside the selection, so
-    nothing this session will close it. It is held too when a blocker is
-    itself held, because that blocker is not going to run either. A closed
-    blocker holds nothing.
+    nothing this session will close it. An open blocker in another repository
+    is always outside it. A candidate is held too when a blocker is itself
+    held, because that blocker is not going to run either. A closed blocker
+    holds nothing.
     """
-    held: dict[int, list[int]] = {}
+    foreign = foreign or {}
+    held: dict[int, list[int | str]] = {}
     changed = True
     while changed:
         changed = False
         for cand in candidates:
             if cand.number in held:
                 continue
-            waits = [d for d in graph.get(cand.number, []) if d in open_outside or d in held]
+            waits: list[int | str] = [
+                d for d in graph.get(cand.number, []) if d in open_outside or d in held
+            ]
+            waits += foreign.get(cand.number, [])
             if waits:
                 held[cand.number] = waits
                 changed = True
@@ -164,21 +171,24 @@ def plan(
     cap: int,
     graph_is_known: bool = True,
     open_outside: set[int] | frozenset[int] = frozenset(),
+    foreign: dict[int, list[str]] | None = None,
 ) -> Plan:
     """Group candidates into waves, or refuse.
 
-    `graph` maps an issue number to the issue numbers blocking it.
-    `open_outside` is the blockers outside `candidates` that are still open.
-    An issue waiting on one of those is held back with a warning, not
-    dispatched: nothing in this session will close its blocker. Any other
-    edge to an issue outside `candidates` is a closed blocker and constrains
-    nothing.
+    `graph` maps an issue number to the issue numbers blocking it, in this
+    repository only. `open_outside` is the blockers outside `candidates` that
+    are still open. `foreign` maps an issue to its open blockers in other
+    repositories, as `owner/name#N`, which are never local numbers. An issue
+    waiting on either is held back with a warning, not dispatched: nothing in
+    this session will close its blocker. Any other edge to an issue outside
+    `candidates` is a closed blocker and constrains nothing.
     """
     result = Plan()
-    result.held = hold_blocked(candidates, graph, open_outside)
+    result.held = hold_blocked(candidates, graph, open_outside, foreign)
     for number, waits in result.held.items():
         reasons = [
-            f"#{d}, which is open and not in this session" if d in open_outside
+            f"{d}, which is open in another repository" if isinstance(d, str)
+            else f"#{d}, which is open and not in this session" if d in open_outside
             else f"#{d}, which is held too"
             for d in waits
         ]
@@ -235,8 +245,9 @@ def plan(
 
     if not graph_is_known:
         result.assumptions.append(
-            "No dependency links were readable, so these issues are treated as "
-            "independent. If one actually blocks another, this plan runs them together."
+            "No dependency links were readable from GitHub, so these issues are treated "
+            "as independent unless a `Blocked by #N` line in an issue body says otherwise. "
+            "If one actually blocks another, this plan runs them together."
         )
 
     unknown_scope = [c.number for c in candidates if not c.files]

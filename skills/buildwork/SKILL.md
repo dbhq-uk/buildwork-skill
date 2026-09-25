@@ -37,7 +37,7 @@ Pass `--issues` when the goal points at specific issues; otherwise it reads `roa
 
 - **`DO NOT FAN OUT`** is a result, not a failure. Say it plainly, say why, and do the work in this session instead. One issue is one agent's work. Fanning it out costs a worktree, a full context and several times the tokens to do what you were already doing.
 - **`!` warnings** are real. An issue that waits a wave is waiting because it would collide. An issue that is **held** does not run this session at all: its blocker is open and not selected, it carries a hold label, or the roadmap lists it under a held heading too. Say which, and do not add it back.
-- **`~` assumptions** must be repeated to the human. "No dependency links were readable" means the plan may be running a blocker beside the thing it blocks.
+- **`~` assumptions** must be repeated to the human. One says where the dependency links came from. "No dependency links were readable from GitHub" means the plan may be running a blocker beside the thing it blocks.
 
 Show the waves and **wait for approval**. Nothing is created until they say go.
 

@@ -205,7 +205,7 @@ def plan(
         result.refusal = (
             "Nothing to run: every selected issue is waiting on an open blocker outside this session."
             if result.held else
-            "Nothing to run: no open issues matched the session goal."
+            "Nothing to run: no issue in the selection is open and runnable."
         )
         return result
 

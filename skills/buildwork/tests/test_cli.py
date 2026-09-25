@@ -479,7 +479,7 @@ def test_init_suggests_the_files_changed_most_often(repo, github, bw):
 def test_plan_reports_a_failing_gh_instead_of_nothing_to_run(repo, github, bw):
     issues(github, 1, 2)
     github.fail("issue", "list")
-    result = bw("plan")
+    result = bw("plan", "--all")
     assert result.code != 0
     assert "Bad credentials" in result.err
 
@@ -522,7 +522,7 @@ def test_every_command_stops_when_gh_is_not_logged_in(repo, github, bw):
     issues(github, 1, 2)
     repo.branch("buildwork/issue-1-issue-1", {"src/f1.py": "x\n"})
     github.authenticated = False
-    for command in (["plan"], ["status"], ["order"]):
+    for command in (["plan", "--issues", "1,2"], ["status"], ["order"]):
         result = bw(*command)
         assert result.code != 0, command
         assert "gh auth login" in result.err, command
@@ -913,12 +913,41 @@ def test_auto_runner_takes_the_runner_flag_and_its_cap(repo, github, bw):
     assert wave_numbers(payload) == [[1, 2, 3, 4]]
 
 
-@bug(13)
 def test_plan_will_not_take_every_open_issue_without_all(repo, github, bw):
     issues(github, 1, 2, 3)
     result = bw("plan", "--goal", "only the parser")
     assert "Wave 1" not in result.out
     assert "--all" in result.text
+
+
+def test_plan_refuses_before_it_reads_github_when_nothing_is_selected(repo, github, bw):
+    issues(github, 1, 2, 3)
+    result = bw("plan", "--goal", "only the parser")
+    assert result.code == 1
+    assert "every open issue" in result.err
+    assert not [c for c in github.calls() if c[:2] == ["issue", "list"]]
+
+
+def test_plan_with_all_takes_every_open_issue_and_says_so(repo, github, bw):
+    issues(github, 1, 2, 3)
+    payload = bw("plan", "--all", "--json").json()
+    assert payload["source"] == "issues"
+    assert sorted(n for wave in wave_numbers(payload) for n in wave) == [1, 2, 3]
+    assert any("every open issue in no particular order" in a for a in payload["assumptions"])
+
+
+def test_plan_with_a_roadmap_needs_neither_issues_nor_all(repo, github, bw):
+    repo.on_main("roadmap", {"roadmap.md": "## Next\n\n1. **#1** One\n2. **#2** Two\n"})
+    issues(github, 1, 2, 3)
+    payload = bw("plan", "--json").json()
+    assert wave_numbers(payload) == [[1, 2]]
+
+
+def test_plan_will_not_take_issues_and_all_together(repo, github, bw):
+    issues(github, 1, 2)
+    result = bw("plan", "--issues", "1,2", "--all")
+    assert result.code != 0
+    assert "not allowed with" in result.err
 
 
 @bug(16)

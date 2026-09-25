@@ -71,6 +71,16 @@ def cmd_plan(args: argparse.Namespace) -> int:
     runner = cfg.runner if cfg.runner != "auto" else args.runner
     cap = cfg.cap_for(runner)
 
+    # `--goal` is recorded, never matched against anything. With no roadmap
+    # and no --issues, the selection would be every open issue whatever the
+    # goal was, and the plan would look as if the goal had chosen it.
+    if not args.issues and not args.all and not cfg.roadmap_path.is_file():
+        fail(
+            f"No {cfg.roadmap} and no --issues, so plan would take every open issue, whatever "
+            f"the goal. Pass --issues with the issues the goal is about, or --all to plan every "
+            f"open issue."
+        )
+
     # Every wave is cut from origin/<base> as it is now. Without the fetch, a
     # wave planned after the last one merged on GitHub starts from a base that
     # does not contain it.
@@ -688,7 +698,10 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("plan", help="work out the waves, or refuse to fan out")
     p.add_argument("--goal", default="", help="the session goal, in the human's words")
-    p.add_argument("--issues", help="comma-separated issue numbers, overriding the roadmap")
+    pick = p.add_mutually_exclusive_group()
+    pick.add_argument("--issues", help="comma-separated issue numbers, overriding the roadmap")
+    pick.add_argument("--all", action="store_true",
+                      help="with no roadmap, plan every open issue; without this, plan refuses")
     p.add_argument("--runner", choices=("paseo", "subagent"),
                    help="the runner you will dispatch with; required when the config says runner = \"auto\"")
     p.add_argument("--save", action="store_true", help="record the session (only after the human approves)")

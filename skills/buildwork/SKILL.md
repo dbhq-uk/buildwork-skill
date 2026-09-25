@@ -23,7 +23,7 @@ If `doctor` says gh is not logged in or cannot tell which repository this is, sa
 
 > What are you trying to get done this session?
 
-The goal filters the roadmap. Without it you will run whatever is at the top of the list, which is how people end up paying for five agents doing work they did not want today.
+**You turn the goal into a selection. The script does not.** `plan` records the goal and matches nothing against it. So read `roadmap.md` (its `## Next`) or the open issues, pick the issues the goal is about, and show that list to the human before planning. Pass it as `--issues`, in roadmap order. Pick from `## Next`: an issue under Blocked, Later or Triage is held there for a reason, and naming it in `--issues` overrides that. Only when the goal is the whole of `## Next` do you leave `--issues` off. Without a selection you will run whatever is at the top of the list, which is how people end up paying for five agents doing work they did not want today.
 
 ## 2. Plan
 
@@ -33,11 +33,11 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" plan --goal "<their words>" -
 
 Pass `--runner paseo` when you can see the Paseo MCP tools (`create_workspace`, `create_agent`), and `--runner subagent` when you have a subagent tool that can create a git worktree instead. With neither, stop: there is nothing here to run workers. The runner sets the wave cap, 4 under Paseo and 2 under subagents, so a wrong one plans the wrong waves. With `runner = "auto"` in the config, `plan` refuses without it.
 
-Pass `--issues` when the goal points at specific issues; otherwise it reads `roadmap.md`.
+Without `--issues` it reads `## Next` from `roadmap.md`. With no roadmap and no `--issues`, `plan` refuses rather than take every open issue. `--all` plans every open issue, and is only for when the human asked for exactly that.
 
 **Read the output before repeating it.** Three things matter:
 
-- **`DO NOT FAN OUT`** is a result, not a failure. Say it plainly, say why, and do the work in this session instead. One issue is one agent's work. Fanning it out costs a worktree, a full context and several times the tokens to do what you were already doing.
+- **`DO NOT FAN OUT`** is a result, not a failure. Say it plainly and say why. One issue is one agent's work. Fanning it out costs a worktree, a full context and several times the tokens to do what you were already doing. **The refusal ends buildwork.** You are no longer the orchestrator, so the rules below stop applying, and the session goes back to normal work: if the human wants the work done here, do it as you would any other task.
 - **`!` warnings** are real. An issue that waits a wave is waiting because it would collide. An issue that is **held** does not run this session at all: its blocker is open and not selected, it carries a hold label, or the roadmap lists it under a held heading too. Say which, and do not add it back.
 - **`~` assumptions** must be repeated to the human. One says where the dependency links came from. "No dependency links were readable from GitHub" means the plan may be running a blocker beside the thing it blocks.
 
@@ -101,7 +101,7 @@ Reconstructed from git branches, pull requests in every state and worktrees - so
 ## The rules that do not bend
 
 1. **Never merge.** No `gh pr merge`, no push to base, no rebase of a worker's branch.
-2. **Never edit code as the orchestrator.** If something small needs doing, it is an issue or it is the human's.
+2. **Never edit code as the orchestrator.** If something small needs doing, it is an issue or it is the human's. After a `DO NOT FAN OUT`, buildwork has ended and there is nothing to orchestrate, so this rule no longer applies.
 3. **No config, no `enabled = true`, no action.** Not a warning. Nothing.
 4. **Ask the goal before planning.** Every time.
 5. **Respect the refusal.** When `plan` says do not fan out, do not fan out.

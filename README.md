@@ -108,7 +108,7 @@ Full field reference: [`references/config.md`](skills/buildwork/references/confi
 
 ## How a session goes
 
-1. **It asks what you are trying to get done.** Every time. The goal filters the roadmap, which is what stops you paying for five agents doing work you did not want today.
+1. **It asks what you are trying to get done.** Every time. The agent turns your answer into a list of issues and shows it to you before planning, which is what stops you paying for five agents doing work you did not want today. With no roadmap and no list, `plan` refuses rather than take every open issue.
 2. **It plans**, and shows you the waves, the collisions and the assumptions. Nothing is created until you approve.
 3. **It dispatches** wave one - a Paseo tab or a host subagent per issue, each with a self-contained brief and a shared digest of your conventions read once rather than five times.
 4. **It goes idle.** No polling. The finish notification arrives on its own.

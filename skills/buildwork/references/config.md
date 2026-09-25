@@ -56,7 +56,14 @@ is worse than having no plan.
 
 ### `base`
 
-The branch workers cut from and pull requests target. Default `main`.
+The branch pull requests target. Default `main`.
+
+Workers are cut from `origin/<base>`, not from the local branch. `plan` runs
+`git fetch origin <base>` first and stops if it cannot, and `qc` and `order`
+diff against `origin/<base>`. So a wave planned after the last one merged on
+GitHub starts from the merged work, whether or not anybody pulled. The fetch
+moves only the remote-tracking ref; your local branch is left alone, and
+`doctor` says when it has fallen behind.
 
 ### `gate`
 

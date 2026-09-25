@@ -15,6 +15,11 @@ from pathlib import Path
 
 TIMEOUT = 60
 
+# The remote workers are cut from and pull requests go to. A worker cut from a
+# local branch starts from wherever that clone last pulled, which after a
+# merge on GitHub is behind the work it is meant to build on.
+REMOTE = "origin"
+
 
 class GhError(Exception):
     """A gh or git call failed. The message carries stderr, not a summary of it."""
@@ -79,6 +84,43 @@ def worktrees(cwd: Path) -> list[dict]:
     if current:
         trees.append(current)
     return trees
+
+
+def remote_base(base: str) -> str:
+    """`origin/<base>`: the ref a worker is cut from, never the local branch."""
+    return f"{REMOTE}/{base}"
+
+
+def fetch_base(cwd: Path, base: str) -> None:
+    """Bring `origin/<base>` up to date. Raises GhError, with git's message, when it cannot.
+
+    Only the remote-tracking ref moves. The local base branch, the working
+    tree and every worker's branch are left exactly where they were.
+    """
+    _run(["git", "fetch", "--quiet", REMOTE, base], cwd=cwd)
+
+
+def base_ref(cwd: Path, base: str) -> str:
+    """What to diff a worker's branch against: `origin/<base>` if it exists, else local `base`.
+
+    Diffing against a local base that is behind the remote lists every commit
+    merged on GitHub since the last pull as the worker's own change, so a
+    clean branch fails its scope check the moment another wave lands.
+    """
+    out = _run(
+        ["git", "rev-parse", "--verify", "--quiet", f"refs/remotes/{remote_base(base)}"],
+        cwd=cwd, check=False,
+    )
+    return remote_base(base) if out.strip() else base
+
+
+def behind_remote(cwd: Path, base: str) -> int | None:
+    """Commits on `origin/<base>` that local `base` lacks. None if either ref is missing."""
+    out = _run(
+        ["git", "rev-list", "--count", f"refs/heads/{base}..refs/remotes/{remote_base(base)}"],
+        cwd=cwd, check=False,
+    )
+    return int(out.strip()) if out.strip().isdigit() else None
 
 
 def changed_files(cwd: Path, base: str, branch: str) -> list[str]:

@@ -59,12 +59,12 @@ That brief is the whole of what the worker is told. Send it verbatim. Do not sum
 
 Then dispatch it with your runner - read [references/runners.md](references/runners.md) for the exact calls. In short:
 
-- **paseo** - `create_workspace` with `isolation: "worktree"` and `mode: "branch-off"`, then `create_agent` in that workspace, labelled `issue:<N>`, `notifyOnFinish` left alone.
+- **paseo** - `create_workspace` with `isolation: "worktree"`, `mode: "branch-off"` and `baseBranch` set to the plan's `base_ref` (`origin/<base>`, never a bare `main`), then `create_agent` in that workspace with `labels: {"buildwork": "1", "issue": "<N>"}` and `notifyOnFinish` left alone.
 - **subagent** - the host's own subagent tool with worktree isolation.
 
 Then **stop and go idle**. Do not poll, do not send hurry-ups, do not check on them. Agents take 10 to 30 minutes and the notification arrives on its own.
 
-Dispatch wave 2 only when wave 1 is collected and merged. A later wave is cut from a base that has moved.
+Dispatch wave 2 only when wave 1 is collected and merged. Then **run `plan` again** with the issues that are left, and dispatch the first wave of that new plan. Never dispatch a later wave from the plan you saved at the start: the base has moved since, and `plan` fetches `origin/<base>` again so the next wave starts from the merged work.
 
 ## 4. Collect
 

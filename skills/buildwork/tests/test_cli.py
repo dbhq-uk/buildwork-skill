@@ -556,12 +556,59 @@ def test_status_shows_a_closed_pull_request_as_done(repo, github, bw):
     assert "Stalled" not in result.out
 
 
-@bug(8)
 def test_doctor_warns_when_the_local_base_is_behind_its_remote(repo, github, bw):
     repo.branch("buildwork/issue-1-a", {"a.txt": "a\n"})
     repo.merge_on_github("buildwork/issue-1-a")
     repo.git("fetch", "-q", "origin")
     assert "behind" in bw("doctor").out
+
+
+def test_doctor_fetches_before_it_compares(repo, github, bw):
+    """Nobody has fetched since the merge on GitHub. doctor must not report a stale comparison."""
+    repo.branch("buildwork/issue-1-a", {"a.txt": "a\n"})
+    repo.merge_on_github("buildwork/issue-1-a")
+    result = bw("doctor")
+    assert "Local `main` is 1 commit(s) behind `origin/main`" in result.out
+
+
+def test_a_later_wave_is_cut_from_a_base_that_contains_the_last_merge(repo, github, bw):
+    """Wave 1 merged on GitHub and local main was never pulled. Wave 2 must start after it."""
+    issues(github, 1, 2, 3)
+    repo.branch("buildwork/issue-1-issue-1", {"src/f1.py": "x\n"})
+    repo.merge_on_github("buildwork/issue-1-issue-1")
+    merged = repo.git("rev-parse", "main", cwd=repo.remote).strip()
+    assert repo.git("rev-parse", "main").strip() != merged
+
+    payload = bw("plan", "--issues", "2,3", "--json").json()
+    assert payload["base_ref"] == "origin/main"
+    assert repo.git("rev-parse", payload["base_ref"]).strip() == merged
+    assert "cut from origin/main" in bw("plan", "--issues", "2,3").out
+
+
+def test_plan_stops_when_the_base_cannot_be_fetched(repo, github, bw):
+    repo.configure('enabled = true\nrunner = "paseo"\nbase = "develop"\n')
+    issues(github, 1, 2)
+    result = bw("plan", "--issues", "1,2")
+    assert result.code == 1
+    assert "Could not fetch origin/develop" in result.err
+    assert "Wave 1" not in result.out
+
+
+def test_qc_diffs_against_the_remote_base_not_a_stale_local_one(repo, github, bw):
+    """Local main was never pulled after #1 merged. #2's branch must not be charged with #1's file."""
+    issues(github, 1, 2)
+    repo.branch("buildwork/issue-1-issue-1", {"src/f1.py": "x\n"})
+    repo.merge_on_github("buildwork/issue-1-issue-1")
+    repo.git("fetch", "-q", "origin")
+    repo.branch("buildwork/issue-2-issue-2", {"src/f2.py": "x\n"}, base="origin/main")
+    result = bw("qc", "2")
+    assert result.code == 0, result.out
+    assert "src/f1.py" not in result.out
+
+
+def test_the_brief_names_the_remote_base_it_was_cut_from(repo, github, bw):
+    github.issue(1, "one", body="Change `src/a.py`.")
+    assert "cut from `origin/main`" in bw("brief", "1").out
 
 
 @bug(10)

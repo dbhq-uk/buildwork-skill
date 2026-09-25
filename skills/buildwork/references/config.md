@@ -41,9 +41,12 @@ repository.
 
 ### `runner`
 
-`auto`, `paseo` or `subagent`. `auto` resolves at dispatch: Paseo MCP tools
-present means `paseo`, otherwise a worktree-capable subagent tool in the host,
-otherwise it refuses rather than guessing.
+`auto`, `paseo` or `subagent`. `auto` is resolved by the agent, which can see
+its own tools and passes `plan --runner`: Paseo MCP tools present means
+`paseo`, otherwise a worktree-capable subagent tool in the host means
+`subagent`. **With `auto` and no `--runner`, `plan` refuses** rather than
+guessing, because the runner sets the wave cap and is recorded with the
+session.
 
 ### `roadmap`
 

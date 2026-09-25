@@ -896,13 +896,21 @@ def test_order_does_not_read_a_blocker_in_another_repository_as_a_branch(repo, g
     assert "blocked by #1" not in result.out
 
 
-@bug(12)
 def test_auto_runner_without_a_runner_flag_refuses(repo, github, bw):
     repo.configure('enabled = true\nrunner = "auto"\n')
     issues(github, 1, 2)
     result = bw("plan", "--issues", "1,2")
     assert result.code != 0
     assert "--runner" in result.text
+
+
+def test_auto_runner_takes_the_runner_flag_and_its_cap(repo, github, bw):
+    repo.configure('enabled = true\nrunner = "auto"\n')
+    issues(github, 1, 2, 3, 4)
+    payload = bw("plan", "--issues", "1,2,3,4", "--runner", "paseo", "--json").json()
+    assert payload["runner"] == "paseo"
+    assert payload["cap"] == 4
+    assert wave_numbers(payload) == [[1, 2, 3, 4]]
 
 
 @bug(13)

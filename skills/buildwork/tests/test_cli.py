@@ -449,7 +449,6 @@ def test_order_stops_when_an_issue_cannot_be_read(repo, github, bw):
     assert "Proposed merge order" not in result.out
 
 
-@bug(6)
 def test_order_puts_the_permitted_hotspot_change_first(repo, github, bw):
     repo.configure(HOTSPOT)
     github.issue(1, "headers", body="Change `public/_headers`.")
@@ -464,6 +463,42 @@ def test_order_puts_the_permitted_hotspot_change_first(repo, github, bw):
     assert "Held back" not in result.out
     assert result.out.index("PR #11") < result.out.index("PR #12")
     assert "touches public/_headers" in result.out
+
+
+def hotspot_wave(repo, github, bw):
+    """#1 is sent to change the hotspot, #2 is not. Both are planned and saved."""
+    repo.configure(HOTSPOT)
+    github.issue(1, "headers", body="Change `public/_headers`.")
+    github.issue(2, "other", body="Change `src/b.py`.")
+    assert bw("plan", "--goal", "g", "--issues", "1,2", "--save").code == 0
+
+
+def test_qc_reads_the_hotspot_permission_from_the_session(repo, github, bw):
+    """SKILL.md runs `qc N` bare at collection. The branch sent to change the hotspot must pass."""
+    hotspot_wave(repo, github, bw)
+    repo.branch("buildwork/issue-1-headers", {"public/_headers": "x\n"})
+    result = bw("qc", "1")
+    assert result.code == 0, result.out
+
+
+def test_only_the_issue_sent_to_change_a_hotspot_may_touch_it(repo, github, bw):
+    hotspot_wave(repo, github, bw)
+    repo.branch("buildwork/issue-1-headers", {"public/_headers": "x\n"})
+    repo.branch("buildwork/issue-2-other", {"src/b.py": "x\n", "public/_headers": "y\n"})
+    github.pull(11, "buildwork/issue-1-headers")
+    github.pull(12, "buildwork/issue-2-other")
+    assert bw("qc", "2").code == 2
+    result = bw("order")
+    assert "Held back, QC not passed: #2" in result.out
+    assert "1. PR #11" in result.out
+
+
+def test_order_without_a_session_knows_no_permission_and_holds_a_hotspot_branch(repo, github, bw):
+    repo.configure(HOTSPOT)
+    github.issue(1, "headers", body="Change `public/_headers`.")
+    repo.branch("buildwork/issue-1-headers", {"public/_headers": "x\n"})
+    github.pull(11, "buildwork/issue-1-headers")
+    assert "Held back, QC not passed: #1" in bw("order").out
 
 
 def merged_wave(repo, github, bw):

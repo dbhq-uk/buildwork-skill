@@ -74,7 +74,7 @@ On each finish notification:
 python3 "${CLAUDE_SKILL_DIR}/scripts/buildwork.py" qc 143
 ```
 
-Exit 0 is a pass, 2 is a failure. Then **read the pull request against the issue's acceptance criteria yourself.** The gates are mechanical: they catch scope and hotspot violations and a failing test run. A semantically wrong change with no covering test passes all three. A QC pass is a floor, never a verdict.
+It reads which hotspot this issue was sent to change from the session `plan --save` recorded, so no `--allow-hotspot` is needed here. Exit 0 is a pass, 2 is a failure. Then **read the pull request against the issue's acceptance criteria yourself.** The gates are mechanical: they catch scope and hotspot violations and a failing test run. A semantically wrong change with no covering test passes all three. A QC pass is a floor, never a verdict.
 
 **On failure: one rework, then a human.** Send the specific failure back to the same worker once, via `send_agent_prompt` or the equivalent. If it fails again, hand it to the human with what failed. Never a third attempt, never a loop.
 

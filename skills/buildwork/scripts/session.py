@@ -1,4 +1,4 @@
-"""The session record: the goal, and the wave it produced.
+"""The session record: the goal, the wave it produced, and who may touch which hotspot.
 
 This is the only thing buildwork writes outside the repository, and it holds
 only what cannot be reconstructed. Which tab is on which issue, which branch
@@ -9,6 +9,11 @@ The session goal cannot be. Nobody can recover "we were trying to get the
 website deploy unblocked today" from a list of branches, and without it a
 resumed session cannot tell whether a half-finished wave is still the right
 thing to be doing.
+
+Nor can the hotspot permissions. The approved plan sent one issue to change
+each hotspot, and `qc` and `order` must hold every other branch to that. Read
+back from the issue bodies instead, an edit after dispatch could permit a
+second branch to touch the same file.
 
 Lives in ~/.dbhq/buildwork/, per the DBHQ convention that every skill keeps its
 state in ~/.dbhq/<skill>/ - never a new dotfile in $HOME, never in the working
@@ -38,6 +43,13 @@ class Session:
     waves: list[list[int]] = field(default_factory=list)
     runner: str = "auto"
     started: float = field(default_factory=time.time)
+    # Issue number (as a string, because JSON keys are) to the hotspots the
+    # plan sent that issue to change.
+    hotspots: dict[str, list[str]] = field(default_factory=dict)
+
+    def allowed_hotspots(self, issue: int) -> tuple[str, ...]:
+        """The hotspots this issue was sent to change. Empty for every other issue."""
+        return tuple(self.hotspots.get(str(issue), ()))
 
     @property
     def age(self) -> float:

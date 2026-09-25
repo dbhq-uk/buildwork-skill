@@ -70,3 +70,19 @@ def test_a_record_older_than_three_days_is_stale():
 ])
 def test_age_text(age, text):
     assert session.Session(repo="r", goal="g", started=time.time() - age - 1).age_text() == text
+
+
+def test_hotspot_permission_round_trips(state_dir, tmp_path):
+    saved = session.Session(repo="repo", goal="g", issues=[1, 2], hotspots={"1": ["public/_headers"]})
+    session.save(tmp_path / "repo", saved)
+    loaded = session.load(tmp_path / "repo")
+    assert loaded.allowed_hotspots(1) == ("public/_headers",)
+    assert loaded.allowed_hotspots(2) == ()
+
+
+def test_a_record_from_before_hotspots_were_saved_still_loads(state_dir, tmp_path):
+    path = session.save(tmp_path / "repo", session.Session(repo="repo", goal="g"))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    del data["hotspots"]
+    path.write_text(json.dumps(data), encoding="utf-8")
+    assert session.load(tmp_path / "repo").allowed_hotspots(1) == ()

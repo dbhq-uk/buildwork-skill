@@ -751,8 +751,11 @@ def test_a_closed_blocker_outside_the_selection_holds_nothing(repo, github, bw):
 
 
 def test_a_blocker_that_cannot_be_read_is_treated_as_open(repo, github, bw):
-    issues(github, 4, 5, 6)
-    github.block(4, 99)
+    """GitHub's own links carry each blocker's state. A body line does not, so #99 is looked up, and fails."""
+    github.blocked_by_field = False
+    github.dependencies_api = False
+    issues(github, 5, 6)
+    github.issue(4, "four", body="Change `src/f4.py`. Blocked by #99.")
     payload = bw("plan", "--issues", "4,5,6", "--json").json()
     assert wave_numbers(payload) == [[5, 6]]
     assert any("#99" in w and "treated as open" in w for w in payload["warnings"])
@@ -789,7 +792,6 @@ def test_plan_holds_an_issue_the_roadmap_lists_under_next_and_triage(repo, githu
     assert "#3 is listed under Next and under Triage. A held listing wins, so it is held." in payload["warnings"]
 
 
-@bug(11)
 def test_plan_says_when_no_dependency_source_answered(repo, github, bw):
     issues(github, 1, 2)
     github.dependencies_api = False
@@ -797,7 +799,6 @@ def test_plan_says_when_no_dependency_source_answered(repo, github, bw):
     assert "No dependency links were readable" in bw("plan", "--issues", "1,2").out
 
 
-@bug(11)
 def test_a_blocker_in_another_repository_is_not_a_local_issue(repo, github, bw):
     issues(github, 1, 2, 3)
     github.block(1, {"repo": "owner/other", "number": 2, "state": "CLOSED"})
@@ -805,7 +806,6 @@ def test_a_blocker_in_another_repository_is_not_a_local_issue(repo, github, bw):
     assert wave_numbers(payload) == [[1, 2, 3]]
 
 
-@bug(11)
 def test_blockers_past_the_first_page_are_read(repo, github, bw):
     for n in range(100, 130):
         github.issue(n, state="CLOSED")
@@ -813,6 +813,87 @@ def test_blockers_past_the_first_page_are_read(repo, github, bw):
     github.block(1, *range(100, 131))
     payload = bw("plan", "--issues", "1,130", "--json").json()
     assert wave_numbers(payload) == [[130], [1]]
+
+
+def test_plan_says_the_blocked_by_field_answered(repo, github, bw):
+    issues(github, 1, 2)
+    github.block(2, 1)
+    payload = bw("plan", "--issues", "1,2", "--json").json()
+    assert wave_numbers(payload) == [[1], [2]]
+    assert "Dependency links were read from GitHub, through gh's `blockedBy` field." in payload["assumptions"]
+    dependency_calls = [c for c in github.calls() if c[:1] == ["api"]]
+    assert dependency_calls == [], "one issue list call carries the graph"
+
+
+def test_an_older_gh_falls_back_to_rest_and_pages_through_it(repo, github, bw):
+    """No `blockedBy` field, so REST answers, and blocker 31 is on its second page."""
+    github.blocked_by_field = False
+    for n in range(100, 130):
+        github.issue(n, state="CLOSED")
+    issues(github, 1, 130)
+    github.block(1, *range(100, 131))
+    payload = bw("plan", "--issues", "1,130", "--json").json()
+    assert wave_numbers(payload) == [[130], [1]]
+    assert "Dependency links were read from GitHub, through the REST dependencies endpoint." in payload["assumptions"]
+
+
+def test_more_blockers_than_the_field_lists_are_read_from_rest(repo, github, bw):
+    """gh asks for the first 50 blockers. The 51st is the open one in this session."""
+    for n in range(100, 150):
+        github.issue(n, state="CLOSED")
+    issues(github, 1, 150)
+    github.block(1, *range(100, 151))
+    payload = bw("plan", "--issues", "1,150", "--json").json()
+    assert wave_numbers(payload) == [[150], [1]]
+
+
+def test_a_404_from_rest_says_so_and_reads_only_the_body(repo, github, bw):
+    github.blocked_by_field = False
+    github.dependencies_api = False
+    issues(github, 1, 3)
+    github.issue(2, "two", body="Change `src/f2.py`. Blocked by #1.")
+    payload = bw("plan", "--issues", "1,2,3", "--json").json()
+    assert wave_numbers(payload) == [[1, 3], [2]]
+    assert any("No dependency links were readable from GitHub" in a for a in payload["assumptions"])
+    assert any("Not Found (HTTP 404)" in a for a in payload["assumptions"])
+
+
+def test_a_bare_after_in_prose_is_not_an_edge(repo, github, bw):
+    github.blocked_by_field = False
+    github.dependencies_api = False
+    issues(github, 1)
+    github.issue(2, "two", body="Change `src/f2.py`. Found after #1 shipped.")
+    payload = bw("plan", "--issues", "1,2", "--json").json()
+    assert wave_numbers(payload) == [[1, 2]]
+
+
+def test_an_open_blocker_in_another_repository_holds_its_issue(repo, github, bw):
+    """Local #2 is open and selected. The blocker is owner/other#2, which is not it."""
+    issues(github, 1, 2, 3)
+    github.block(1, {"repo": "owner/other", "number": 2, "state": "OPEN"})
+    payload = bw("plan", "--issues", "1,2,3", "--json").json()
+    assert wave_numbers(payload) == [[2, 3]]
+    assert "#1 is held: it is blocked by owner/other#2, which is open in another repository." in payload["warnings"]
+
+
+def test_a_blocker_in_another_repository_read_through_rest_is_not_local(repo, github, bw):
+    github.blocked_by_field = False
+    issues(github, 1, 2, 3)
+    github.block(1, {"repo": "owner/other", "number": 2, "state": "CLOSED"})
+    payload = bw("plan", "--issues", "1,2,3", "--json").json()
+    assert wave_numbers(payload) == [[1, 2, 3]]
+
+
+def test_order_does_not_read_a_blocker_in_another_repository_as_a_branch(repo, github, bw):
+    issues(github, 1, 2)
+    github.block(2, {"repo": "owner/other", "number": 1, "state": "CLOSED"})
+    repo.branch("buildwork/issue-1-issue-1", {"src/f1.py": "x\n" * 50})
+    repo.branch("buildwork/issue-2-issue-2", {"src/f2.py": "x\n"})
+    github.pull(11, "buildwork/issue-1-issue-1")
+    github.pull(12, "buildwork/issue-2-issue-2")
+    result = bw("order")
+    assert result.out.index("PR #12") < result.out.index("PR #11")
+    assert "blocked by #1" not in result.out
 
 
 @bug(12)

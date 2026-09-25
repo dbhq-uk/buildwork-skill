@@ -75,7 +75,9 @@ def cmd_plan(args: argparse.Namespace) -> int:
             f"missing merged work. Fix the fetch and plan again.\n{exc}"
         )
 
-    issues = gh.open_issues(root)
+    # One call brings every open issue and, on a gh that has the field, the
+    # whole dependency graph with each blocker's state and repository.
+    issues = gh.open_issues(root, blockers=True)
     by_number = {int(i["number"]): i for i in issues}
 
     board = roadmap_mod.load(cfg.roadmap_path, fallback_issues=issues)
@@ -105,22 +107,38 @@ def cmd_plan(args: argparse.Namespace) -> int:
                 keep.append(issue)
         selected = keep
 
-    graph, graph_known = {}, False
+    graph: dict[int, list[int]] = {}
+    foreign: dict[int, list[str]] = {}
+    known: dict[int, str] = {}
+    answered: dict[str, list[int]] = {}
+    problems: list[str] = []
     for issue in selected:
-        try:
-            deps = gh.blocked_by(root, int(issue["number"]), issue.get("body") or "")
-            graph[int(issue["number"])] = deps
-            graph_known = True
-        except gh.GhError:
-            graph[int(issue["number"])] = []
+        number = int(issue["number"])
+        deps = gh.dependencies(root, issue)
+        graph[number] = deps.local
+        answered.setdefault(deps.source, []).append(number)
+        if deps.problem:
+            problems.append(deps.problem)
+        for blocker in deps.blockers:
+            if blocker.repo:
+                # Never a local number. Held unless the source says it is closed.
+                if blocker.state != "CLOSED":
+                    foreign.setdefault(number, []).append(str(blocker))
+            elif blocker.state:
+                known[blocker.number] = blocker.state
+    graph_known = any(source != gh.SOURCE_BODY for source in answered)
 
-    open_outside, unread = _open_blockers(root, graph, by_number)
+    open_outside, unread = _open_blockers(root, graph, by_number, known)
 
     candidates = waves_mod.build_candidates(selected, cfg.hotspots, root)
     plan = waves_mod.plan(
-        candidates, graph, cap=cap, graph_is_known=graph_known, open_outside=open_outside,
+        candidates, graph, cap=cap, graph_is_known=graph_known,
+        open_outside=open_outside, foreign=foreign,
     )
     plan.warnings[:0] = [*board.warnings, *label_held, *unread]
+    source_warnings, source_assumptions = _dependency_sources(answered, problems)
+    plan.warnings.extend(source_warnings)
+    plan.assumptions[:0] = source_assumptions
 
     if board.note:
         plan.assumptions.append(board.note)
@@ -180,8 +198,42 @@ def _label_names(issue: dict) -> set[str]:
     }
 
 
+def _numbers(numbers: list[int]) -> str:
+    return ", ".join(f"#{n}" for n in numbers)
+
+
+def _dependency_sources(answered: dict[str, list[int]], problems: list[str]) -> tuple[list[str], list[str]]:
+    """Warnings and assumptions that say which source gave the dependency graph.
+
+    The graph decides what runs beside what, so the human is always told
+    where it came from, and told plainly when GitHub gave none of it.
+    """
+    labels = {gh.SOURCE_FIELD: "gh's `blockedBy` field", gh.SOURCE_REST: "the REST dependencies endpoint"}
+    native = [(labels[src], answered[src]) for src in labels if src in answered]
+    fallback = answered.get(gh.SOURCE_BODY, [])
+    why = f" gh said: {problems[0]}" if problems else ""
+    warnings: list[str] = []
+    assumptions: list[str] = []
+    if native and not fallback and len(native) == 1:
+        assumptions.append(f"Dependency links were read from GitHub, through {native[0][0]}.")
+    elif native:
+        parts = " and ".join(f"{label} for {_numbers(nums)}" for label, nums in native)
+        assumptions.append(f"Dependency links were read from GitHub: {parts}.")
+    if fallback and native:
+        warnings.append(
+            f"GitHub gave no dependency links for {_numbers(fallback)}, so only "
+            f"`Blocked by #N` lines in the issue body were read.{why}"
+        )
+    elif fallback:
+        assumptions.append(
+            f"Neither gh's `blockedBy` field nor the REST dependencies endpoint answered.{why}"
+        )
+    return warnings, assumptions
+
+
 def _open_blockers(
     root: Path, graph: dict[int, list[int]], open_issues: dict[int, dict],
+    known: dict[int, str] | None = None,
 ) -> tuple[set[int], list[str]]:
     """The blockers outside this selection that are still open, and any that could not be read.
 
@@ -194,9 +246,12 @@ def _open_blockers(
     outside = sorted({d for deps in graph.values() for d in deps if d not in selected})
     still_open: set[int] = set()
     unread: list[str] = []
+    known = known or {}
     for number in outside:
-        if number in open_issues:
+        if number in open_issues or known.get(number) == "OPEN":
             still_open.add(number)
+            continue
+        if known.get(number) == "CLOSED":
             continue
         try:
             state = (gh.issue(root, number).get("state") or "").upper()
@@ -364,7 +419,8 @@ def cmd_order(args: argparse.Namespace) -> int:
         # No fallback to an empty body. With no body the issue declares no
         # paths, the scope check reports nothing to check, and a branch gh
         # could not read about is offered for merge.
-        body = gh.issue(root, number).get("body") or ""
+        info = gh.issue(root, number)
+        body = info.get("body") or ""
         declared = waves_mod.declared_files(body, root)
         changed = gh.changed_files(root, base, branch)
         # Without the plan's permission, the one branch sent to change a
@@ -379,7 +435,9 @@ def cmd_order(args: argparse.Namespace) -> int:
             issue=number, branch=branch,
             pr=pr.get("number") if pr else None,
             hotspots=waves_mod.hotspots_touched(tuple(changed), cfg.hotspots),
-            blocked_by=tuple(gh.blocked_by(root, number, body)),
+            # Local blockers only. A blocker in another repository is never
+            # one of these branches, whatever its number.
+            blocked_by=tuple(gh.dependencies(root, info).local),
             diff_size=gh.diff_size(root, base, branch),
             qc_passed=report.passed,
         ))

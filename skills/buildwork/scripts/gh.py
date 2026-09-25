@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+from dataclasses import dataclass, field
 from pathlib import Path
 
 TIMEOUT = 60
@@ -149,13 +150,25 @@ def diff_size(cwd: Path, base: str, branch: str) -> int:
 
 # --- gh -------------------------------------------------------------------
 
-def open_issues(cwd: Path, limit: int = 200) -> list[dict]:
-    """Every open issue. Raises GhError, with gh's stderr, when gh fails."""
-    return _json(
-        ["gh", "issue", "list", "--state", "open", "--limit", str(limit),
-         "--json", "number,title,body,labels,url"],
-        cwd=cwd,
-    ) or []
+ISSUE_LIST_FIELDS = "number,title,body,labels,url"
+
+
+def open_issues(cwd: Path, limit: int = 200, blockers: bool = False) -> list[dict]:
+    """Every open issue. Raises GhError, with gh's stderr, when gh fails.
+
+    With `blockers`, each issue also carries gh's `blockedBy` field, so the
+    whole dependency graph comes back in this one call. A gh too old to have
+    that field fails the call; it is asked again without it, and the issues
+    come back with no `blockedBy` key, which `dependencies` reads as "this
+    source did not answer".
+    """
+    args = ["gh", "issue", "list", "--state", "open", "--limit", str(limit), "--json"]
+    if blockers:
+        try:
+            return _json([*args, ISSUE_LIST_FIELDS + ",blockedBy"], cwd=cwd) or []
+        except GhError:
+            pass
+    return _json([*args, ISSUE_LIST_FIELDS], cwd=cwd) or []
 
 
 def issue(cwd: Path, number: int) -> dict:
@@ -209,25 +222,115 @@ def default_remote_set(cwd: Path) -> bool:
     return bool(out.strip())
 
 
-BLOCKED_BY_PROSE = re.compile(r"\b(?:blocked by|depends on|after)\s+#(\d+)", re.I)
+# `after #N` is not here on purpose. "Tidy up after #12 lands" and "found
+# after #12 shipped" are ordinary sentences, and reading them as edges invents
+# dependencies nobody declared.
+BLOCKED_BY_PROSE = re.compile(r"\b(?:blocked by|depends on)\s+#(\d+)", re.I)
+
+# Where a dependency graph came from. The first two are GitHub's own links;
+# the last is a regex over the issue body, used only when neither answered.
+SOURCE_FIELD = "blockedBy"
+SOURCE_REST = "rest"
+SOURCE_BODY = "body"
+
+GITHUB_REPO = re.compile(r"(?:api\.github\.com/repos/|github\.com/)([^/\s]+/[^/\s]+?)(?:/|$)")
 
 
-def blocked_by(cwd: Path, number: int, body: str = "") -> list[int]:
-    """Issue numbers this issue is blocked by.
+@dataclass(frozen=True)
+class Blocker:
+    number: int
+    repo: str = ""   # "" for this repository, "owner/name" for another one
+    state: str = ""  # "OPEN" or "CLOSED" when the source said, "" when it did not
 
-    Native GitHub issue dependencies first. If that endpoint is unavailable -
-    an older GitHub Enterprise, a repo without the feature, a gh too old - fall
-    back to reading `Blocked by #N` out of the body.
+    def __str__(self) -> str:
+        return f"{self.repo}#{self.number}" if self.repo else f"#{self.number}"
 
-    The fallback is not as good and the caller is told which one answered, so a
-    missing edge is visible rather than silently assumed absent. An edge this
-    module fails to find becomes two agents dispatched into a dependency they
-    were supposed to run in sequence.
-    """
-    data = _json(
-        ["gh", "api", f"repos/{{owner}}/{{repo}}/issues/{number}/dependencies/blocked_by"],
-        cwd=cwd, default=[],
+
+@dataclass
+class Dependencies:
+    blockers: list[Blocker] = field(default_factory=list)
+    source: str = SOURCE_BODY
+    problem: str = ""  # why GitHub's own links could not be read, when they were not
+
+    @property
+    def local(self) -> list[int]:
+        """Blockers in this repository. One in another repository is never a local number."""
+        return sorted({b.number for b in self.blockers if not b.repo})
+
+
+def _repo_in(url: str) -> str:
+    match = GITHUB_REPO.search(url or "")
+    return match.group(1) if match else ""
+
+
+def _blocker(number, repo: str, state: str, home: str) -> Blocker:
+    # With no repository to compare, a blocker is not assumed to be local.
+    # Reading `other/repo#12` as local #12 is the mistake this guards against.
+    foreign = not repo or not home or repo.lower() != home.lower()
+    return Blocker(
+        number=int(number),
+        repo=(repo or "another repository") if foreign else "",
+        state=(state or "").upper(),
     )
-    if isinstance(data, list) and data:
-        return sorted({int(item["number"]) for item in data if "number" in item})
-    return sorted({int(m) for m in BLOCKED_BY_PROSE.findall(body or "")})
+
+
+def _from_field(field_value: dict, home: str) -> list[Blocker]:
+    out = []
+    for node in field_value.get("nodes") or []:
+        if not isinstance(node, dict) or "number" not in node:
+            continue
+        repo = (node.get("repository") or {}).get("nameWithOwner") or _repo_in(node.get("url", ""))
+        out.append(_blocker(node["number"], repo, node.get("state", ""), home))
+    return out
+
+
+def _from_rest(cwd: Path, number: int, home: str) -> list[Blocker]:
+    """Every blocker from the REST endpoint. Raises GhError when it does not answer.
+
+    `--paginate` because the endpoint returns 30 a page, and `--slurp` because
+    without it the pages are printed back to back and are not one JSON value.
+    """
+    pages = _json(
+        ["gh", "api", "--paginate", "--slurp",
+         f"repos/{{owner}}/{{repo}}/issues/{number}/dependencies/blocked_by?per_page=100"],
+        cwd=cwd,
+    ) or []
+    out = []
+    for page in pages:
+        for item in page if isinstance(page, list) else []:
+            if not isinstance(item, dict) or "number" not in item:
+                continue
+            repo = _repo_in(item.get("repository_url", "")) or _repo_in(item.get("html_url", ""))
+            out.append(_blocker(item["number"], repo, item.get("state", ""), home))
+    return out
+
+
+def dependencies(cwd: Path, issue: dict) -> Dependencies:
+    """What this issue is blocked by, and which source said so.
+
+    First gh's `blockedBy` field, when the issue came from `open_issues(...,
+    blockers=True)` and the field lists every blocker. Then the REST
+    endpoint, paginated, with its exit code checked. Only when neither
+    answers, `Blocked by #N` lines in the body, with the reason recorded in
+    `problem` so the caller can say the graph was not read. An edge missed
+    here becomes two agents dispatched into a dependency they were meant to
+    run in sequence, so the caller is always told which source answered.
+    """
+    number = int(issue["number"])
+    home = _repo_in(issue.get("url", "")) or repo_name(cwd)
+
+    value = issue.get("blockedBy")
+    if isinstance(value, dict):
+        found = _from_field(value, home)
+        total = value.get("totalCount")
+        # gh asks for the first 50. Past that, the field is only a sample.
+        if not isinstance(total, int) or total <= len(found):
+            return Dependencies(blockers=found, source=SOURCE_FIELD)
+
+    try:
+        return Dependencies(blockers=_from_rest(cwd, number, home), source=SOURCE_REST)
+    except GhError as exc:
+        prose = sorted({int(m) for m in BLOCKED_BY_PROSE.findall(issue.get("body") or "")})
+        return Dependencies(
+            blockers=[Blocker(number=n) for n in prose], source=SOURCE_BODY, problem=str(exc),
+        )

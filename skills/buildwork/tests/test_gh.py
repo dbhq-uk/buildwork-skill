@@ -81,15 +81,47 @@ def test_pulls_returns_every_state_with_its_state(repo, gh_env):
     assert got == {10: "OPEN", 11: "MERGED", 12: "CLOSED"}
 
 
-def test_blocked_by_reads_native_links(repo, gh_env):
+def test_dependencies_come_from_the_blocked_by_field(repo, gh_env):
     gh_env.issue(1)
     gh_env.issue(2)
     gh_env.issue(3, blocked_by=(1, 2))
-    assert gh.blocked_by(repo.root, 3) == [1, 2]
+    three = next(i for i in gh.open_issues(repo.root, blockers=True) if i["number"] == 3)
+    deps = gh.dependencies(repo.root, three)
+    assert deps.source == gh.SOURCE_FIELD
+    assert deps.local == [1, 2]
+
+
+def test_dependencies_fall_back_to_rest_with_the_issue_from_view(repo, gh_env):
+    gh_env.issue(1)
+    gh_env.issue(3, blocked_by=(1, "owner/other#7"))
+    deps = gh.dependencies(repo.root, gh.issue(repo.root, 3))
+    assert deps.source == gh.SOURCE_REST
+    assert deps.local == [1]
+    assert [str(b) for b in deps.blockers] == ["#1", "owner/other#7"]
+
+
+def test_an_older_gh_still_lists_issues_without_blocked_by(repo, gh_env):
+    gh_env.blocked_by_field = False
+    gh_env.issue(1)
+    issues = gh.open_issues(repo.root, blockers=True)
+    assert [i["number"] for i in issues] == [1]
+    assert "blockedBy" not in issues[0]
+
+
+def test_when_github_does_not_answer_the_body_is_read_and_the_reason_kept(repo, gh_env):
+    gh_env.dependencies_api = False
+    deps = gh.dependencies(repo.root, {
+        "number": 3, "url": "https://github.com/owner/repo/issues/3",
+        "body": "Blocked by #1, and it depends on #2.",
+    })
+    assert deps.source == gh.SOURCE_BODY
+    assert deps.local == [1, 2]
+    assert "404" in deps.problem
 
 
 def test_blocked_by_prose_patterns():
     assert gh.BLOCKED_BY_PROSE.findall("Blocked by #3, and it depends on #4.") == ["3", "4"]
+    assert gh.BLOCKED_BY_PROSE.findall("Tidy up after #5 lands.") == []
 
 
 def test_a_missing_binary_is_a_gh_error(tmp_path):

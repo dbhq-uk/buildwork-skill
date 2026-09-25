@@ -56,12 +56,28 @@ client that calls it. That needs sequencing, not isolation, which is what
 
 1. Hold back anything that cannot start this session: an issue whose blocker
    is open and outside this set, since nothing here will close it, and an
-   issue whose blocker is itself held. Each one gets a `!` warning naming the
-   blocker. A closed blocker holds nothing.
+   issue whose blocker is itself held. A blocker in another repository is
+   always outside the set, and is never read as a local issue with the same
+   number. Each one gets a `!` warning naming the blocker. A closed blocker
+   holds nothing.
 2. Take everything with no unmet blocker inside this set.
 3. Walk them in roadmap order, adding each to the wave unless it claims a file
    already claimed in that wave.
 4. Stop at the cap.
+
+## Where the dependency links come from
+
+`plan` reads them in one call: `gh issue list` with the `blockedBy` field,
+which lists each blocker with its state and repository. gh asks for the
+first 50; an issue with more is read again from the REST dependencies
+endpoint, page by page. A gh too old to have the field falls back to that
+endpoint for every issue. Either way the plan says which source answered,
+in a `~` line.
+
+Only when GitHub gives no answer at all does `plan` read `Blocked by #N` and
+`Depends on #N` lines out of the issue body, and it says so, with gh's own
+error. A bare `after #N` is not read: "found after #12 shipped" is a
+sentence, not a dependency.
 
 **A claim is any declared file, plus any hotspot those files hit.** Two
 branches editing one file conflict whether or not somebody listed it as a

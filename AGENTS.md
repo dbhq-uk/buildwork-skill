@@ -122,8 +122,14 @@ it returns a confident wrong plan and dispatches agents on it. So the fixtures
 deliberately include the cases that produce plausible wrong answers: two issues
 on one hotspot, a fully chained set that must degrade to sequential, a single
 issue that must refuse, a `blocked by #143` line in prose that must not be read
-as a queue entry, and a cross-repo `owner/repo#26` that must never become local
-issue 26.
+as a queue entry, a cross-repo `owner/repo#26` that must never become local
+issue 26, one issue listed under both Next and Triage that must be held, and an
+open blocker outside the selection that must hold its issue.
+
+`test_roadmap.py` keeps deskwork's output shapes as fixtures, old and new. The
+contract is only the `## Next`, `## Blocked`, `## Later` and `## Triage`
+headings and entries like `1. **#12** Title`. Do not make the parser depend on
+anything newer that deskwork writes.
 
 ### The CLI harness
 

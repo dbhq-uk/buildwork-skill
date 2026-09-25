@@ -88,6 +88,23 @@ def cmd_plan(args: argparse.Namespace) -> int:
     missing = [n for n in wanted if n not in by_number]
     selected = [by_number[n] for n in wanted if n in by_number]
 
+    # A hold label wins over the roadmap and over --issues. It is the one hold
+    # a human can put on an issue from GitHub without editing the roadmap.
+    label_held: list[str] = []
+    if cfg.hold_labels:
+        keep = []
+        for issue in selected:
+            hit = [name for name in cfg.hold_labels if name in _label_names(issue)]
+            if hit:
+                label_held.append(
+                    f"#{issue['number']} is held: it has the "
+                    + ", ".join(f"`{name}`" for name in hit)
+                    + (" label." if len(hit) == 1 else " labels.")
+                )
+            else:
+                keep.append(issue)
+        selected = keep
+
     graph, graph_known = {}, False
     for issue in selected:
         try:
@@ -97,8 +114,13 @@ def cmd_plan(args: argparse.Namespace) -> int:
         except gh.GhError:
             graph[int(issue["number"])] = []
 
+    open_outside, unread = _open_blockers(root, graph, by_number)
+
     candidates = waves_mod.build_candidates(selected, cfg.hotspots, root)
-    plan = waves_mod.plan(candidates, graph, cap=cap, graph_is_known=graph_known)
+    plan = waves_mod.plan(
+        candidates, graph, cap=cap, graph_is_known=graph_known, open_outside=open_outside,
+    )
+    plan.warnings[:0] = [*board.warnings, *label_held, *unread]
 
     if board.note:
         plan.assumptions.append(board.note)
@@ -149,6 +171,42 @@ def cmd_plan(args: argparse.Namespace) -> int:
 
     print(_render_plan(payload))
     return 0
+
+
+def _label_names(issue: dict) -> set[str]:
+    return {
+        (label.get("name") if isinstance(label, dict) else label) or ""
+        for label in issue.get("labels") or []
+    }
+
+
+def _open_blockers(
+    root: Path, graph: dict[int, list[int]], open_issues: dict[int, dict],
+) -> tuple[set[int], list[str]]:
+    """The blockers outside this selection that are still open, and any that could not be read.
+
+    An open blocker outside the selection holds its issue: nothing in this
+    session will close it. One that cannot be read is treated as open, and
+    said so, because running an issue ahead of a blocker nobody could check
+    is the mistake this exists to prevent.
+    """
+    selected = set(graph)
+    outside = sorted({d for deps in graph.values() for d in deps if d not in selected})
+    still_open: set[int] = set()
+    unread: list[str] = []
+    for number in outside:
+        if number in open_issues:
+            still_open.add(number)
+            continue
+        try:
+            state = (gh.issue(root, number).get("state") or "").upper()
+        except gh.GhError as exc:
+            still_open.add(number)
+            unread.append(f"#{number} blocks an issue here and could not be read, so it is treated as open. {exc}")
+            continue
+        if state != "CLOSED":
+            still_open.add(number)
+    return still_open, unread
 
 
 def _render_plan(p: dict) -> str:

@@ -1,6 +1,6 @@
 ---
 name: buildwork
-description: Run a repository's open issues as parallel agents, one per issue, each in its own worktree and its own pull request, then check them and propose a merge order. Works through Paseo tabs or the host's own subagents. Trigger on phrases like "buildwork", "run the roadmap", "work through the backlog", "fan these out", "run these issues in parallel", "spin up agents for these", "what are my agents doing", "what are my agents running", "which order do I merge these", "collect the wave".
+description: Run a repository's open issues as parallel agents, one per issue, each in its own worktree and its own pull request, then check them and propose a merge order. Works through Paseo tabs or the host's own subagents. Use when the user wants several issues run in parallel, asks what the agents are doing or which order to merge, or says "buildwork".
 ---
 
 # buildwork - parallel issues, one orchestrator, no merging
